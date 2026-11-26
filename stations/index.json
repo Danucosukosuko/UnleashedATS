@@ -1,0 +1,16 @@
+{
+ "format": 1,
+ "generated": "2026-11-26",
+ "regions": [
+  {
+   "name": "Europe",
+   "countries": [
+    {
+     "code": "ES",
+     "name": "Spain",
+     "count": 3973
+    }
+   ]
+  }
+ ]
+}

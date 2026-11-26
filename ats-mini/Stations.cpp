@@ -148,7 +148,8 @@ bool stationsLoadIndex()
   }
 
   regionCount = indexCount = 0;
-  for(JsonObject region : doc["regions"].as<JsonArray>())
+  JsonArray regions = doc["regions"];
+  for(JsonObject region : regions)
   {
     if(regionCount>=STATIONS_MAX_REGIONS) break;
 
@@ -156,7 +157,8 @@ bool stationsLoadIndex()
     regionFirst[regionCount] = indexCount;
     regionTotal[regionCount] = 0;
 
-    for(JsonObject country : region["countries"].as<JsonArray>())
+    JsonArray countries = region["countries"];
+    for(JsonObject country : countries)
     {
       const char *code = country["code"] | "";
       if(indexCount>=STATIONS_MAX_INDEX || strlen(code)!=2) continue;

@@ -280,19 +280,19 @@ def wikidata_labels(qids, langs):
     qids = sorted(set(q for q in qids if q and q.startswith("Q")))
     for i in range(0, len(qids), 50):
         batch = qids[i:i + 50]
-        for n, chunk in enumerate(chunks):
-            d = mwapi("www.wikidata.org", action="wbgetentities", ids="|".join(batch),
-                      props="labels" if n else "labels|claims", languages="|".join(chunk))
+        for chunk in chunks:
+            # Labels only: the claims of a large city run to megabytes
+            try:
+                d = mwapi("www.wikidata.org", action="wbgetentities", ids="|".join(batch),
+                          props="labels", languages="|".join(chunk))
+            except Exception as e:  # a lost batch only costs a few names
+                log(f"  labels batch skipped: {e}")
+                continue
             if "error" in d:
                 log(f"  wbgetentities: {d['error'].get('info')}")
             for qid, ent in d.get("entities", {}).items():
                 labels = out.setdefault(qid, {})
                 labels.update({k: v["value"] for k, v in ent.get("labels", {}).items()})
-                # Native label (P1705) is the most local spelling of a place
-                for claim in ent.get("claims", {}).get("P1705", []):
-                    v = claim.get("mainsnak", {}).get("datavalue", {}).get("value", {})
-                    if v.get("text"):
-                        labels.setdefault("native", v["text"])
         if i and not i % 1000:
             log(f"  labels {i}/{len(qids)}")
     return out
@@ -600,7 +600,7 @@ def category_pages(host, category, depth=1, limit=300):
     return sorted(set(pages))[:limit]
 
 
-def from_wikipedia(countries, only=None):
+def from_wikipedia(countries, only=None, categories=True):
     log("Stations (Wikipedia)...")
     pages = []
     todo, seen = [WIKI_CATEGORY], set()
@@ -627,7 +627,7 @@ def from_wikipedia(countries, only=None):
     pages += [(lang, title, cc, None) for lang, title, cc in EXTRA_WIKI_PAGES]
     # Articles about the stations and networks themselves, whose own
     # tables list their transmitters, named after the article
-    for lang, category, cc in STATION_CATEGORIES:
+    for lang, category, cc in STATION_CATEGORIES if categories else []:
         if only and cc not in only:
             continue
         for title in category_pages(f"{lang}.wikipedia.org", category):
@@ -885,13 +885,22 @@ def merge(entries):
             if e["city"] or (e["cc"], e["f"], norm_key(e["name"])) not in with_city]
 
 
-def write(countries, entries):
+def write(countries, entries, partial=False):
+    """Write one file per country and the index. A partial build keeps the
+    countries already in the index, so the lists can be published bit by bit."""
     os.makedirs(OUT_DIR, exist_ok=True)
     today = datetime.date.today().isoformat()
     per_cc = {}
     for e in entries:
         per_cc.setdefault(e["cc"], []).append(e)
     regions = {}
+    index_path = os.path.join(OUT_DIR, "index.json")
+    if partial and os.path.exists(index_path):
+        with open(index_path, encoding="utf-8") as f:
+            for region in json.load(f).get("regions", []):
+                for c in region["countries"]:
+                    if c["code"] not in per_cc:
+                        regions.setdefault(region["name"], []).append(c)
     for cc, items in sorted(per_cc.items()):
         country = countries.get(cc)
         if not country:
@@ -925,7 +934,7 @@ def write(countries, entries):
         if region in regions:
             index["regions"].append({"name": region, "countries":
                                      sorted(regions[region], key=lambda c: c["name"])})
-    with open(os.path.join(OUT_DIR, "index.json"), "w", encoding="utf-8") as f:
+    with open(index_path, "w", encoding="utf-8") as f:
         json.dump(index, f, ensure_ascii=False, indent=1)
         f.write("\n")
     total = sum(len(v) for v in per_cc.values())
@@ -937,6 +946,8 @@ def main():
     ap.add_argument("--only", help="comma separated ISO codes to rebuild")
     ap.add_argument("--skip-fcc", action="store_true")
     ap.add_argument("--skip-wikipedia", action="store_true")
+    ap.add_argument("--skip-categories", action="store_true",
+                    help="skip the station articles of the local-language Wikipedias (slow)")
     args = ap.parse_args()
     only = {c.strip().upper() for c in args.only.split(",")} if args.only else None
 
@@ -944,7 +955,7 @@ def main():
     entries = []
     entries += from_wikidata(countries, only)
     if not args.skip_wikipedia:
-        entries += from_wikipedia(countries, only)
+        entries += from_wikipedia(countries, only, not args.skip_categories)
     if not args.skip_fcc and (not only or "US" in only):
         try:
             entries += from_fcc()
@@ -958,7 +969,7 @@ def main():
     entries += from_manual()
     if only:
         entries = [e for e in entries if e["cc"] in only]
-    write(countries, merge(entries))
+    write(countries, merge(entries), partial=bool(only))
 
 
 if __name__ == "__main__":
