@@ -2,6 +2,7 @@
 #include "Draw.h"
 #include "Utils.h"
 #include "Stations.h"
+#include "Storage.h"
 
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
@@ -14,7 +15,7 @@
 
 #define STATIONS_DIR        "/stations"
 #define STATIONS_TEMP       "/stations/download.tmp"
-#define STATIONS_MAGIC      "UST1"
+#define STATIONS_MAGIC      "UST2"
 #define STATIONS_MAX_LOCAL  32   // Countries kept on the receiver
 #define STATIONS_MAX_INDEX 300   // Countries in the downloaded index
 #define STATIONS_MAX_REGIONS 10  // Regions in the downloaded index
@@ -25,13 +26,18 @@
 #define STATIONS_CHUNK    4096   // Bytes read from the network at a time
 #define STATIONS_CYCLE       2   // Identification calls per listed name
 
+// Header, then the records sorted by frequency, then the region names
 typedef struct __attribute__((packed))
 {
   char magic[4];
   char code[3];
   char name[24];
   uint16_t count;
+  uint8_t regions;
+  uint8_t reserved;
 } StationFileHeader;
+
+typedef char RegionName[STATION_REGION_LEN];
 
 // Use the CA bundle shipped with the ESP32 core, as the OTA update does
 extern const uint8_t caBundleStart[] asm("_binary_x509_crt_bundle_start");
@@ -58,8 +64,14 @@ static int indexCount = 0;
 static StationCountry localList[STATIONS_MAX_LOCAL];
 static int localCount = -1;
 
-// Country loaded for browsing
+// Country loaded for browsing, and the view of one of its regions
 static StationRecord *openList = nullptr;
+static int openTotal = 0;
+static RegionName *openRegions = nullptr;
+static uint8_t openRegionCount = 0;
+static uint8_t regionOrder[STATION_NO_REGION + 1]; // Sorted, STATION_NO_REGION last when present
+static int regionOrderCount = 0;
+static uint16_t *openView = nullptr;
 static int openCount = 0;
 
 void stationsField(char *dst, const char *src, int size)
@@ -434,7 +446,7 @@ bool stationsLocalDelete(int idx)
 
   bool result = LittleFS.remove(filePath(localList[idx].code));
   localCount = -1;
-  openCount = 0;
+  openCount = openTotal = 0;
   return(result);
 }
 
@@ -499,6 +511,18 @@ bool stationsDownload(const StationCountry *country)
   filter["p"] = true;
   filter["n"] = true;
   filter["c"] = true;
+  filter["r"] = true;
+
+  RegionName *regions = static_cast<RegionName *>(ps_calloc(STATION_NO_REGION, sizeof(RegionName)));
+  uint8_t regionCount = 0;
+  if(!regions)
+  {
+    free(json);
+    file.close();
+    LittleFS.remove(STATIONS_TEMP);
+    statusShow(title, "Not enough memory.");
+    return(false);
+  }
 
   JsonDocument doc(&spiRamAllocator);
   uint16_t count = 0;
@@ -528,6 +552,20 @@ bool stationsDownload(const StationCountry *country)
 
     StationRecord record;
     record.freq = freq;
+    record.region = STATION_NO_REGION;
+    const char *region = doc["r"] | "";
+    if(*region)
+    {
+      RegionName name;
+      copyAscii(name, region, sizeof(name), true);
+      for(int i=0 ; i<regionCount ; i++)
+        if(!strcmp(regions[i], name)) record.region = i;
+      if(record.region==STATION_NO_REGION && regionCount<STATION_NO_REGION)
+      {
+        memcpy(regions[regionCount], name, sizeof(name));
+        record.region = regionCount++;
+      }
+    }
     copyAscii(record.ps,   doc["p"] | "", STATION_PS_LEN, false);
     copyAscii(record.name, doc["n"] | "", STATION_NAME_LEN, false);
     copyAscii(record.city, doc["c"] | "", STATION_CITY_LEN, false);
@@ -551,12 +589,15 @@ bool stationsDownload(const StationCountry *country)
 
   if(ok)
   {
-    // The header goes in last, with the final count
+    // The region names follow the records, the header goes in last
+    file.write((uint8_t *)regions, regionCount * sizeof(RegionName));
     header.count = count;
+    header.regions = regionCount;
     file.seek(0);
     file.write((uint8_t *)&header, sizeof(header));
   }
   file.close();
+  free(regions);
 
   if(!ok || !count)
   {
@@ -573,7 +614,7 @@ bool stationsDownload(const StationCountry *country)
   LittleFS.remove(path);
   LittleFS.rename(STATIONS_TEMP, path);
   localCount = -1;
-  openCount = 0;
+  openCount = openTotal = 0;
 
   snprintf(status, sizeof(status), "%s: %u stations stored.", country->name, count);
   statusShow(title, status);
@@ -597,13 +638,63 @@ bool stationsOpen(int idx)
     return(false);
 
   free(openList);
-  openCount = 0;
-  openList = static_cast<StationRecord *>(ps_malloc((size_t)header.count * sizeof(StationRecord) + 1));
-  if(!openList) return(false);
+  free(openRegions);
+  free(openView);
+  openList = nullptr;
+  openRegions = nullptr;
+  openView = nullptr;
+  openTotal = openCount = regionOrderCount = 0;
+  openRegionCount = 0;
 
-  int count = file.read((uint8_t *)openList, (size_t)header.count * sizeof(StationRecord)) / sizeof(StationRecord);
-  openCount = count;
-  return(count>0);
+  openList = static_cast<StationRecord *>(ps_malloc((size_t)header.count * sizeof(StationRecord) + 1));
+  openRegions = static_cast<RegionName *>(ps_calloc(header.regions + 1, sizeof(RegionName)));
+  openView = static_cast<uint16_t *>(ps_malloc(((size_t)header.count + 1) * sizeof(uint16_t)));
+  if(!openList || !openRegions || !openView) return(false);
+
+  openTotal = file.read((uint8_t *)openList, (size_t)header.count * sizeof(StationRecord)) / sizeof(StationRecord);
+  openRegionCount = file.read((uint8_t *)openRegions, header.regions * sizeof(RegionName)) / sizeof(RegionName);
+  for(int i=0 ; i<openRegionCount ; i++) openRegions[i][STATION_REGION_LEN - 1] = '\0';
+
+  // Regions sorted by name, then the stations that have none
+  bool unknown = false;
+  for(int i=0 ; i<openTotal ; i++)
+    if(openList[i].region>=openRegionCount) unknown = true;
+  for(int i=0 ; i<openRegionCount ; i++)
+  {
+    int j = regionOrderCount++;
+    while(j>0 && strcmp(openRegions[regionOrder[j-1]], openRegions[i])>0)
+    {
+      regionOrder[j] = regionOrder[j-1];
+      j--;
+    }
+    regionOrder[j] = i;
+  }
+  if(unknown && openRegionCount) regionOrder[regionOrderCount++] = STATION_NO_REGION;
+
+  stationsSelectRegion(-1);
+  return(openTotal>0);
+}
+
+int stationsRegionsOpen() { return(regionOrderCount); }
+
+const char *stationsRegionOpenName(int idx)
+{
+  if(idx<0 || idx>=regionOrderCount) return("");
+  return(regionOrder[idx]==STATION_NO_REGION? "Other" : openRegions[regionOrder[idx]]);
+}
+
+void stationsSelectRegion(int idx)
+{
+  openCount = 0;
+  if(!openView) return;
+
+  int region = idx<0 || idx>=regionOrderCount? -1 : regionOrder[idx];
+  for(int i=0 ; i<openTotal ; i++)
+  {
+    bool match = region<0 || openList[i].region==region ||
+                 (region==STATION_NO_REGION && openList[i].region>=openRegionCount);
+    if(match) openView[openCount++] = i;
+  }
 }
 
 int stationsOpenCount() { return(openCount); }
@@ -611,7 +702,7 @@ int stationsOpenCount() { return(openCount); }
 bool stationsOpenRecord(int idx, StationRecord *record)
 {
   if(idx<0 || idx>=openCount) return(false);
-  *record = openList[idx];
+  *record = openList[openView[idx]];
   return(true);
 }
 
@@ -619,7 +710,7 @@ int stationsOpenFind(uint32_t freqHz)
 {
   uint16_t freq = freqHz / 10000;
   int i;
-  for(i=0 ; i<openCount && openList[i].freq<freq ; i++);
+  for(i=0 ; i<openCount && openList[openView[i]].freq<freq ; i++);
   return(i<openCount? i : 0);
 }
 
@@ -627,7 +718,50 @@ int stationsOpenFind(uint32_t freqHz)
 // Identification by frequency, the way EiBi does it for shortwave
 //
 
-static int findInFile(fs::File &file, uint16_t count, uint16_t freq, StationRecord *matches, int found)
+static char homeRegion[STATION_REGION_LEN] = "";
+static bool homeLoaded = false;
+
+const char *stationsHomeRegion()
+{
+  if(!homeLoaded)
+  {
+    prefs.begin("stations", true, STORAGE_PARTITION);
+    String name = prefs.getString("Home", "");
+    prefs.end();
+    snprintf(homeRegion, sizeof(homeRegion), "%s", name.c_str());
+    homeLoaded = true;
+  }
+  return(homeRegion);
+}
+
+void stationsSetHomeRegion(const char *name)
+{
+  if(!strcmp(stationsHomeRegion(), name)) return;
+  snprintf(homeRegion, sizeof(homeRegion), "%s", name);
+  prefs.begin("stations", false, STORAGE_PARTITION);
+  prefs.putString("Home", homeRegion);
+  prefs.end();
+}
+
+// Index of the home province in a list file, -1 for every province
+static int homeRegionIndex(fs::File &file, const StationFileHeader &header)
+{
+  if(!*stationsHomeRegion()) return(-1);
+
+  file.seek(sizeof(StationFileHeader) + (size_t)header.count * sizeof(StationRecord));
+  for(int i=0 ; i<header.regions ; i++)
+  {
+    RegionName name;
+    if(file.read((uint8_t *)name, sizeof(name))!=sizeof(name)) break;
+    name[STATION_REGION_LEN - 1] = '\0';
+    if(!strcmp(name, homeRegion)) return(i);
+  }
+
+  // A country without that province names every station
+  return(-1);
+}
+
+static int findInFile(fs::File &file, uint16_t count, uint16_t freq, int region, StationRecord *matches, int found)
 {
   int lo = 0, hi = count - 1, first = -1;
   StationRecord record;
@@ -651,7 +785,7 @@ static int findInFile(fs::File &file, uint16_t count, uint16_t freq, StationReco
 
   file.seek(sizeof(StationFileHeader) + (size_t)first * sizeof(record));
   while(found<STATIONS_MAX_MATCH && file.read((uint8_t *)&record, sizeof(record))==sizeof(record) && record.freq==freq)
-    matches[found++] = record;
+    if(region<0 || record.region==region) matches[found++] = record;
 
   return(found);
 }
@@ -674,8 +808,9 @@ const char *stationsIdentify(uint32_t freqHz, bool periodic)
     {
       fs::File file = LittleFS.open(filePath(localList[i].code), "r");
       StationFileHeader header;
-      if(file && file.read((uint8_t *)&header, sizeof(header))==sizeof(header))
-        found = findInFile(file, header.count, freqHz / 10000, matches, found);
+      if(file && file.read((uint8_t *)&header, sizeof(header))==sizeof(header) &&
+         !memcmp(header.magic, STATIONS_MAGIC, 4))
+        found = findInFile(file, header.count, freqHz / 10000, homeRegionIndex(file, header), matches, found);
     }
   }
   else if(found>1 && ++calls>=STATIONS_CYCLE)

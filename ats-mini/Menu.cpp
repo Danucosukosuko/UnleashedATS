@@ -263,9 +263,10 @@ static const char *const autoStoreActions[] = { "Back", "Add New", "Replace" };
 // Station list menus. Item 0 of every list is "Back".
 //
 
-static uint8_t stnLevel = 0;      // 0: countries, 1: stations
+static uint8_t stnLevel = 0;      // 0: countries, 1: provinces, 2: stations
 static int stnIdx = 0;            // Highlighted item
 static int stnCountryIdx = 0;     // Country being browsed
+static int stnRegionIdx = -1;     // Province being browsed, -1 for all
 static uint8_t loadLevel = 0;     // 0: regions, 1: countries
 static int loadIdx = 0;           // Highlighted item
 static int loadRegion = 0;        // Region being browsed
@@ -857,9 +858,9 @@ bool tuneToFrequency(uint32_t freq, uint8_t mode)
 
   if(band==bandIdx && currentMode==mode)
   {
-    muteOn(MUTE_TEMP, true, !audioClamp);
+    softVolume(true);
     bool tuned = updateFrequency(freq, false);
-    muteOn(MUTE_TEMP, false, !audioClamp);
+    softVolume(false);
     clearStationInfo();
     identifyFrequency(currentFrequency);
     prefsRequestSave(SAVE_CUR_BAND);
@@ -898,6 +899,12 @@ static void doStations(int16_t enc)
     return;
   }
 
+  if(stnLevel==1)
+  {
+    stnIdx = wrap_range(stnIdx, enc, 0, stationsRegionsOpen());
+    return;
+  }
+
   stnIdx = wrap_range(stnIdx, enc, 0, stationsOpenCount());
 
   StationRecord record;
@@ -927,7 +934,40 @@ static void clickStations(bool shortPress)
     else if(stationsOpen(stnIdx - 1))
     {
       stnCountryIdx = stnIdx - 1;
-      stnLevel = 1;
+      stnRegionIdx = -1;
+      if(stationsRegionsOpen()>1)
+      {
+        // Pick the province first, a country is too long a list,
+        // starting on the listener's province
+        stnLevel = 1;
+        stnIdx = 1;
+        for(int i=0 ; i<stationsRegionsOpen() ; i++)
+          if(!strcmp(stationsRegionOpenName(i), stationsHomeRegion())) stnIdx = i + 1;
+      }
+      else
+      {
+        stnLevel = 2;
+        stnIdx = 1 + (currentMode==FM? stationsOpenFind(currentFrequency) : 0);
+      }
+    }
+    return;
+  }
+
+  if(stnLevel==1)
+  {
+    if(!stnIdx)
+    {
+      stnLevel = 0;
+      stnIdx = stnCountryIdx + 1;
+    }
+    else
+    {
+      stnRegionIdx = stnIdx - 1;
+      stationsSelectRegion(stnRegionIdx);
+      // The province picked here is where the listener is
+      stationsSetHomeRegion(stationsRegionOpenName(stnRegionIdx));
+      identifyFrequency(currentFrequency);
+      stnLevel = 2;
       // Start on the station closest to the current frequency
       stnIdx = 1 + (currentMode==FM? stationsOpenFind(currentFrequency) : 0);
     }
@@ -936,8 +976,17 @@ static void clickStations(bool shortPress)
 
   if(!stnIdx)
   {
-    stnLevel = 0;
-    stnIdx = stnCountryIdx + 1;
+    // Back to the provinces, or to the countries when there are none
+    if(stationsRegionsOpen()>1)
+    {
+      stnLevel = 1;
+      stnIdx = stnRegionIdx + 1;
+    }
+    else
+    {
+      stnLevel = 0;
+      stnIdx = stnCountryIdx + 1;
+    }
   }
   else currentCmd = CMD_NONE;
 }
@@ -1352,6 +1401,19 @@ bool tuneToMemory(const Memory *memory)
   // Must differ from the current band, frequency and modulation
   if(memory->band==bandIdx && memory->freq==bands[bandIdx].currentFreq && memory->mode==bands[bandIdx].bandMode)
     return(true);
+
+  // Within the same band and mode, a plain retune is enough and avoids
+  // reconfiguring the receiver, which thumps the speaker at every step
+  if(memory->band==bandIdx && memory->mode==currentMode && !isSSB())
+  {
+    softVolume(true);
+    bool tuned = updateFrequency(memory->freq, false);
+    softVolume(false);
+    clearStationInfo();
+    identifyFrequency(currentFrequency);
+    prefsRequestSave(SAVE_CUR_BAND);
+    return(tuned);
+  }
 
   // Use default step when changing modes
   if(bands[memory->band].bandMode != memory->mode)
@@ -1834,7 +1896,7 @@ bool doSideBar(uint16_t cmd, int16_t enc, int16_t enca)
     case CMD_AUTOSTORE:  autoStoreIdx = wrap_range(autoStoreIdx, scrollDirection * enc, 0, LAST_ITEM(autoStoreActions));break;
     // Taking over the tuning cancels the memory scan
     case CMD_MEMSCAN:    memScanStop();currentCmd = CMD_NONE;break;
-    case CMD_STATIONS:   doStations(scrollDirection * (stnLevel? enca : enc));break;
+    case CMD_STATIONS:   doStations(scrollDirection * (stnLevel==2? enca : enc));break;
     case CMD_LOADSTN:    doLoadStations(scrollDirection * (loadLevel? enca : enc));break;
     case CMD_AFLIST:     doAfList(scrollDirection * enc);break;
     case CMD_EONLIST:    doEonList(scrollDirection * enc);break;
@@ -2811,8 +2873,8 @@ static void drawList(const char *title, int count, int idx, void (*label)(int, c
     }
     else spr.setTextColor(TH.menu_item);
 
-    spr.setTextDatum(MC_DATUM);
-    spr.drawString(text, 40+x+(sx/2), 64+y+(i*16), FONT_SMALL);
+    // Long names slide on the highlighted line and are clipped on the others
+    drawMarquee(text, 8+x, 64+y+(i*16)-8, 62+sx, FONT_SMALL, i==0);
   }
 
   // Say why the list is empty
@@ -2834,9 +2896,22 @@ static void drawStations(int x, int y, int sx)
   {
     drawList("Stations", stationsLocalCount(), stnIdx, [](int i, char *text, size_t size) {
       StationCountry country;
-      if(stationsLocalCountry(i, &country)) fitText(text, size, country.name, 11);
+      if(stationsLocalCountry(i, &country)) snprintf(text, size, "%s", country.name);
       else *text = '\0';
     }, x, y, sx, "No lists");
+    return;
+  }
+
+  if(stnLevel==1)
+  {
+    StationCountry country;
+    char title[12] = "Provinces";
+    if(stationsLocalCountry(stnCountryIdx, &country)) fitText(title, sizeof(title), country.name, 11);
+    drawList(title, stationsRegionsOpen(), stnIdx, [](int i, char *text, size_t size) {
+      // Mark the listener's province
+      const char *name = stationsRegionOpenName(i);
+      snprintf(text, size, "%s%s", strcmp(name, stationsHomeRegion())? "" : "*", name);
+    }, x, y, sx);
     return;
   }
 
@@ -2854,9 +2929,10 @@ static void drawStations(int x, int y, int sx)
     StationRecord record;
     char name[STATION_NAME_LEN + 1];
     if(!stationsOpenRecord(i, &record)) { *text = '\0'; return; }
-    // The expected RDS name when known, the station name otherwise
-    stationsField(name, record.ps[0]? record.ps : record.name, record.ps[0]? STATION_PS_LEN : STATION_NAME_LEN);
-    snprintf(text, size, "%.1f %.6s", record.freq / 100.0, name);
+    // The whole station name, or the expected RDS name when there is none
+    stationsField(name, record.name, STATION_NAME_LEN);
+    if(!*name) stationsField(name, record.ps, STATION_PS_LEN);
+    snprintf(text, size, "%.1f %s", record.freq / 100.0, name);
   }, x, y, sx);
 }
 
@@ -2865,7 +2941,7 @@ static void drawLoadStations(int x, int y, int sx)
   if(loadLevel==0)
   {
     drawList("Load List", stationsRegionCount(), loadIdx, [](int i, char *text, size_t size) {
-      fitText(text, size, stationsRegionName(i), 11);
+      snprintf(text, size, "%s", stationsRegionName(i));
     }, x, y, sx);
     return;
   }
@@ -2876,7 +2952,7 @@ static void drawLoadStations(int x, int y, int sx)
     const StationCountry *country = stationsIndexCountry(loadRegion, i);
     if(!country) { *text = '\0'; return; }
     // Mark the country already on the receiver
-    snprintf(text, size, "%s%.10s", stationsIsLocal(country->code)? "*" : "", country->name);
+    snprintf(text, size, "%s%s", stationsIsLocal(country->code)? "*" : "", country->name);
   }, x, y, sx);
 }
 

@@ -224,9 +224,9 @@ bool afTune(uint32_t freq)
   if(freq==currentFrequency) return(true);
 
   // Same program, so the station name and the lists stay
-  muteOn(MUTE_TEMP, true, !audioClamp);
+  softVolume(true);
   bool tuned = updateFrequency(freq, false);
-  muteOn(MUTE_TEMP, false, !audioClamp);
+  softVolume(false);
   afBadTime = 0;
   return(tuned);
 }
@@ -273,8 +273,8 @@ static bool afTryNext()
   // Nothing to gain from where we already are
   if(freq==curFreq || !isFreqInBand(getCurrentBand(), freq)) return(false);
 
-  // Keep quiet while looking around
-  muteOn(MUTE_TEMP, true, !audioClamp);
+  // Keep quiet while looking around, without thumping the speaker
+  softVolume(true);
 
   rx.setFrequencyConfirmed(freqFromHz(freq, FM));
   delay(AF_SETTLE_TIME);
@@ -291,7 +291,7 @@ static bool afTryNext()
     getCurrentBand()->currentFreq = freq;
     rssi = newRssi;
     snr  = newSnr;
-    muteOn(MUTE_TEMP, false, !audioClamp);
+    softVolume(false);
     afBadTime = 0;
     return(true);
   }
@@ -299,7 +299,7 @@ static bool afTryNext()
   // Back to the frequency we came from
   rx.setFrequencyConfirmed(freqFromHz(curFreq, FM));
   delay(AF_SETTLE_TIME);
-  muteOn(MUTE_TEMP, false, !audioClamp);
+  softVolume(false);
 
   return(false);
 }

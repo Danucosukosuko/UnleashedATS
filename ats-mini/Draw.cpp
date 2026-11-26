@@ -93,14 +93,44 @@ bool drawStatus(int x, int y)
 //
 // Draw zoomed menu item
 //
+bool marqueeActive = false;
+
+void drawMarquee(const char *text, int x, int y, int width, const lgfx::IFont *font, bool scroll)
+{
+  static const int pause = 1500;  // Still time at each end (msecs)
+  static const int speed = 30;    // Time per pixel (msecs)
+
+  int textWidth = spr.textWidth(text, font);
+  if(textWidth <= width)
+  {
+    spr.setTextDatum(TC_DATUM);
+    spr.drawString(text, x + width / 2, y, font);
+    return;
+  }
+
+  int offset = 0;
+  if(scroll)
+  {
+    int travel = textWidth - width;
+    uint32_t t = millis() % (2 * pause + travel * speed);
+    offset = t < pause? 0 : min(travel, (int)((t - pause) / speed));
+    marqueeActive = true;
+  }
+
+  spr.setFont(font);
+  spr.setClipRect(x, y - 2, width, spr.fontHeight() + 4);
+  spr.setTextDatum(TL_DATUM);
+  spr.drawString(text, x - offset, y, font);
+  spr.clearClipRect();
+}
+
 void drawZoomedMenu(const char *text, bool force)
 {
   if (!zoomMenu && !force) return;
 
   spr.fillSmoothRoundRect(RDS_OFFSET_X - 72 + 1, RDS_OFFSET_Y - 3 + 1, 152, 26, 4, TH.menu_bg);
-  spr.setTextDatum(TC_DATUM);
   spr.setTextColor(TH.menu_item);
-  spr.drawString(text, RDS_OFFSET_X + 5, RDS_OFFSET_Y, FONT_LARGE);
+  drawMarquee(text, RDS_OFFSET_X - 69, RDS_OFFSET_Y, 148, FONT_LARGE, !force);
   spr.drawRoundRect(RDS_OFFSET_X - 72, RDS_OFFSET_Y - 3, 154, 28, 4, TH.menu_border);
 }
 
@@ -428,10 +458,10 @@ void drawLongStationName(const char *name, int x, int y)
   int width = spr.textWidth(name, FONT_SMALL);
   spr.setTextColor(TH.rds_text);
 
-  if((x + width) >= 320)
+  if((x + width) >= 318)
   {
-    spr.setTextDatum(TL_DATUM);
-    spr.drawString(name, x, y, FONT_SMALL);
+    // Too long for the screen, let it slide
+    drawMarquee(name, x, y, 318 - x, FONT_SMALL, true);
   }
   else if(width <= 60)
   {
@@ -501,6 +531,7 @@ void drawScanGraphs(uint32_t freq)
 //
 void drawScreen()
 {
+  marqueeActive = false;
   if(sleepOn()) return;
 
   // Clear screen buffer

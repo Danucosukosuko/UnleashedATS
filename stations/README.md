@@ -14,7 +14,7 @@ names the station on the frequency you tune when there is no RDS, the way EiBi d
   "format": 1, "code": "ES", "country": "Spain", "region": "Europe", "generated": "2026-11-26",
   "sources": ["REMER vademecum (DGPCE, Spain)", "Wikidata"],
   "stations": [
-    {"f": 98.1, "n": "LOS40", "c": "Madrid", "p": "LOS40"},
+    {"f": 98.1, "n": "LOS40", "c": "Madrid", "p": "LOS40", "r": "Madrid"},
     {"f": 104.6, "n": "Radio Cornella", "c": "Cornella de Llobreg", "name": "Ràdio Cornellà", "city": "Cornellà de Llobregat"}
   ]
 }
@@ -25,6 +25,7 @@ names the station on the frequency you tune when there is no RDS, the way EiBi d
 | `f` | Frequency in MHz |
 | `n`, `c` | Station name and municipality, in ASCII as the receiver shows them |
 | `p` | RDS name (PS) the station is expected to send, when known |
+| `r`, `region` | Province or state, in ASCII and, when it differs, in full. The receiver groups the stations by it |
 | `name`, `city` | Full spelling, when it differs from the ASCII one. Municipalities keep their local name |
 
 Country and region names are in English. Stations are sorted by frequency.

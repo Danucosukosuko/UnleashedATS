@@ -14,7 +14,8 @@ First UnleashedATS release, based on ATS-Mini v2.46 and the changes merged after
 - **RDS EON** menu: the other networks announced by the station, with their names and frequencies, ready to tune.
 - `ALL+AF (EU)` and `ALL+AF (US)` RDS modes, which move to a stronger frequency of the same programme when the reception fades.
 - TP, AF and EON indicators next to the frequency.
-- FM station lists by country: *Settings → Load Stations* downloads the list of a country (replacing the previous one), *Menu → Stations* browses it, and listed stations are named on screen when there is no RDS.
+- FM station lists by country: *Settings → Load Stations* downloads the list of a country (replacing the previous one), *Menu → Stations* browses it by province or state, and the stations of your home province are named on screen when there is no RDS.
+- Long names in the menus and on the main screen slide along so they can be read in full.
 - **Auto Store** sweeps the band and stores the stations found, named after their RDS name. **Add New** fills the free slots, **Replace** drops the stations of the band first.
 - **Mem Scan** hops through the memories, skipping the quiet ones and holding on an active channel.
 - **Seek Auto** mode, which rebuilds the memories from a full sweep of the band.
@@ -26,6 +27,7 @@ First UnleashedATS release, based on ATS-Mini v2.46 and the changes merged after
 
 ### Changed
 
+- Tuning from lists, memories in the same band and AF frequencies fades the audio instead of switching the hardware mute, which thumped the speaker at every step.
 - *Settings → Update FW* installs UnleashedATS releases from <https://github.com/Danucosukosuko/UnleashedATS>.
 - UnleashedATS is released under the GNU GPLv3. The MIT notice of the ATS-Mini code is kept in `LICENSE-ATS-Mini`.
 

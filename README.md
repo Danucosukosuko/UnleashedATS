@@ -27,7 +27,8 @@ FM-DX style remote control page.
 | 🛰️ | **RDS EON.** The other networks the station announces, with their names and frequencies, ready to tune. | Menu → RDS EON |
 | 🔁 | **AF follow.** With `ALL+AF` RDS modes the receiver hops to a stronger frequency of the same programme when reception fades. | Settings → RDS |
 | 🚦 | **TP / AF / EON indicators** next to the frequency, and a **peak hold** marker on both S-meters. | Main screen |
-| 🗺️ | **FM station lists by country.** Download the list of your country over Wi-Fi, browse it by frequency, and get every listed station named on screen when RDS is not there, the way EiBi does it on shortwave. | Settings → Load Stations, Menu → Stations |
+| 🗺️ | **FM station lists by country.** Download the list of your country over Wi-Fi, browse it by province or state, and get the stations of your province named on screen when RDS is not there, the way EiBi does it on shortwave. | Settings → Load Stations, Menu → Stations |
+| 🎚️ | **Smooth retuning.** Moving through lists, memories and AF frequencies fades the audio instead of clicking the speaker, and long names slide along to be read in full. | Everywhere |
 | 💾 | **Auto Store.** Sweeps the band and stores every station it finds, named after its RDS name. **Add New** or **Replace**. | Menu → Auto Store |
 | 🔍 | **Mem Scan.** Hops through the memories, skipping the quiet ones and holding on a live channel. | Menu → Mem Scan |
 | ⚡ | **Seek Auto.** A third Seek mode that rebuilds the memories from a full band sweep. | Menu → Seek |

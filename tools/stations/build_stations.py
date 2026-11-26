@@ -141,7 +141,8 @@ def fetch(url, data=None, accept=None, cache=True, tries=4):
                 wait = max(wait, int(retry) if retry and retry.isdigit() else 30)
             log(f"  retrying in {wait}s ({e})")
             time.sleep(wait)
-    if key:
+    # Never keep a huge answer, the disk may be short of space
+    if key and len(content) <= 2 * 1024 * 1024:
         os.makedirs(CACHE_DIR, exist_ok=True)
         with open(os.path.join(CACHE_DIR, key), "wb") as f:
             f.write(content)
@@ -316,30 +317,30 @@ def pick_label(labels, langs, prefer_native=False):
 # Provinces, states and regions of the places, through Wikidata
 #
 
-# Spain is browsed by province, the other countries by their first level
-REGION_CLASS = {"ES": "wd:Q162620"}
-FIRST_LEVEL = "wd:Q10864048"
-
-
 def regions_of(places, countries):
-    """{place qid: (region qid)} for the places of each country."""
+    """{place qid: region qid}: the most local division above each place
+    that has an ISO 3166-2 code (provinces in Spain and Italy, states in the
+    United States, departments in France...)."""
+    qids = [q for q in places if q and q.startswith("Q")]
+    candidates, parents = {}, {}
+    for i in range(0, len(qids), 150):
+        values = " ".join("wd:" + q for q in qids[i:i + 150])
+        try:
+            rows = sparql(f"""SELECT ?p ?r ?up WHERE {{ VALUES ?p {{ {values} }}
+  ?p wdt:P131* ?r . ?r wdt:P300 ?iso . OPTIONAL {{ ?r wdt:P131 ?up }} }}""")
+        except Exception as e:
+            log(f"  regions skipped: {e}")
+            continue
+        for r in rows:
+            candidates.setdefault(r["p"], set()).add(r["r"])
+            if r.get("up"):
+                parents.setdefault(r["r"], set()).add(r["up"])
     out = {}
-    by_cc = {}
-    for qid, cc in places.items():
-        if qid and qid.startswith("Q"):
-            by_cc.setdefault(cc, []).append(qid)
-    for cc, qids in by_cc.items():
-        cls = REGION_CLASS.get(cc)
-        test = f"?r wdt:P31 {cls} ." if cls else f"?r wdt:P31/wdt:P279* {FIRST_LEVEL} ."
-        for i in range(0, len(qids), 150):
-            values = " ".join("wd:" + q for q in qids[i:i + 150])
-            try:
-                rows = sparql(f"SELECT ?p ?r WHERE {{ VALUES ?p {{ {values} }} ?p wdt:P131* ?r . {test} }}")
-            except Exception as e:
-                log(f"  regions skipped: {e}")
-                continue
-            for r in rows:
-                out.setdefault(r["p"], r["r"])
+    for place, regions in candidates.items():
+        # The lowest one is not the parent of any other candidate
+        higher = {up for r in regions for up in parents.get(r, ())}
+        lowest = sorted(regions - higher) or sorted(regions)
+        out[place] = lowest[0]
     return out
 
 

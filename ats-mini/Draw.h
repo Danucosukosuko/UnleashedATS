@@ -35,6 +35,11 @@
 #define RDSIND_OFFSET_Y  60   // RDS service labels y offset
 
 void drawMessage(const char *msg);
+// Draw text in a box, centered when it fits; otherwise clipped, and with
+// scroll set, sliding back and forth so that all of it can be read
+void drawMarquee(const char *text, int x, int y, int width, const lgfx::IFont *font, bool scroll);
+// Set while some text is sliding, so that the screen keeps being redrawn
+extern bool marqueeActive;
 void drawZoomedMenu(const char *text, bool force = false);
 void drawScanGraphs(uint32_t freq); // Hz
 void drawScreen();

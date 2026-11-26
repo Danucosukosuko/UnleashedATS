@@ -28,6 +28,10 @@ void getSignalThresholds(uint8_t *minRssi, uint8_t *minSnr);
 // Set, reset, toggle, or query switches
 bool sleepOn(int x = 2);
 bool muteOn(uint8_t mode, int x = 2, bool muteAmp = false);
+// Fade the receiver volume out (true) or back in (false) around a retune.
+// Unlike muteOn(), it leaves the audio clamp and the amplifier alone, so
+// moving through a list does not thump the speaker at every step.
+void softVolume(bool down);
 void receiverShutdown();
 
 // Configured duration is saved; a fresh countdown starts on power-up.

@@ -152,7 +152,7 @@ int autoStoreRun(uint8_t flags)
   }
 
   // Mute the audio
-  muteOn(MUTE_TEMP, true, !audioClamp);
+  softVolume(true);
   // Flag is set by rotary encoder and cleared on seek/scan entry
   seekStop = false;
   // Save current frequency
@@ -243,7 +243,7 @@ int autoStoreRun(uint8_t flags)
   // Restore current frequency
   updateFrequency(curFreq, false);
   // Unmute the audio
-  muteOn(MUTE_TEMP, false, !audioClamp);
+  softVolume(false);
 
   // Keep whatever the memory looks like now
   if(stored || (flags & (ATS_REPLACE | ATS_CLEAR_ALL)))

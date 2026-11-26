@@ -927,6 +927,14 @@ void loop()
   // Expire status messages even when no other display content changes.
   needRedraw |= statusTick(millis());
 
+  // Keep sliding names moving
+  static uint32_t lastMarquee = 0;
+  if(marqueeActive && (millis() - lastMarquee) > 80)
+  {
+    needRedraw = true;
+    lastMarquee = millis();
+  }
+
   // Redraw screen if necessary
   if(needRedraw) drawScreen();
 

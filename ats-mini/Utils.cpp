@@ -261,6 +261,23 @@ bool muteOn(uint8_t mode, int x, bool muteAmp)
   }
 }
 
+void softVolume(bool down)
+{
+  static const int steps = 6;
+
+  // Nothing to fade while the audio is muted anyway
+  if(muteOn(MUTE_MAIN) || muteOn(MUTE_SQUELCH) || muteOn(MUTE_TEMP)) return;
+
+  for(int i=1 ; i<=steps ; i++)
+  {
+    rx.setVolume(down? volume * (steps - i) / steps : volume * i / steps);
+    delay(down? 4 : 8);
+  }
+
+  // Land exactly on the volume setting
+  if(!down) rx.setVolume(volume);
+}
+
 //
 // Turn sleep on (1) or off (0), or get current status (2)
 //
