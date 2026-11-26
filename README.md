@@ -6,7 +6,7 @@
   <a href="https://github.com/Danucosukosuko/UnleashedATS/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Danucosukosuko/UnleashedATS?style=for-the-badge&color=d9a441&labelColor=1c1710"></a>
   <img alt="Based on ATS-Mini v2.46" src="https://img.shields.io/badge/based%20on-ATS--Mini%20v2.46-a8946f?style=for-the-badge&labelColor=1c1710">
   <img alt="ESP32-S3" src="https://img.shields.io/badge/ESP32--S3-OSPI%20%7C%20QSPI-f2e6cf?style=for-the-badge&labelColor=1c1710">
-  <a href="LICENSE"><img alt="GPLv3 license" src="https://img.shields.io/badge/license-GPLv3-59c36a?style=for-the-badge&labelColor=1c1710"></a>
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-59c36a?style=for-the-badge&labelColor=1c1710"></a>
 </p>
 
 **UnleashedATS** is a custom firmware (CFW) for the ATS-Mini pocket receiver (ESP32-S3 + SI4732). It keeps
@@ -144,7 +144,6 @@ The CFW is maintained by [Danucosukosuko](https://github.com/Danucosukosuko).
 
 ## License
 
-UnleashedATS is free software, released under the [GNU General Public License v3.0](LICENSE). It contains
-code from the official ATS-Mini firmware, used under the MIT license, whose notice is kept in
-[LICENSE-ATS-Mini](LICENSE-ATS-Mini). The station lists are distributed under the GPLv3 too, with the
-attributions listed in [stations/README.md](stations/README.md).
+UnleashedATS is released under the [MIT license](LICENSE), like the official ATS-Mini firmware it is
+built on, so features can travel freely between the two. The station lists in [`stations/`](stations) are
+distributed under [CC BY-SA 4.0](stations/LICENSE.md), because part of them comes from Wikipedia.

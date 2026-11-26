@@ -13,4 +13,4 @@ over every other source when the lists are rebuilt.
 ```
 
 `f` is the frequency in MHz, `name` and `city` keep their own spelling, `ps` is the RDS name the station
-sends (optional). Contributions are distributed under the GPLv3, like the rest of UnleashedATS.
+sends (optional). Contributions are distributed under CC BY-SA 4.0, like the rest of the station lists.

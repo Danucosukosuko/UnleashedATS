@@ -46,11 +46,11 @@ python tools/stations/build_stations.py --only ES  # one country
 | [Wikipedia](https://www.wikipedia.org/) station tables | Lists of radio stations by country, network articles | CC BY-SA 4.0 |
 | [FCC FM Query](https://www.fcc.gov/media/radio/fm-query) | United States, licensed FM and LPFM stations | Public domain |
 | REMER vademecum of the Spanish Directorate-General for Civil Protection and Emergencies | Spain, every province | Public sector information |
-| `tools/stations/manual/<CC>.json` | Additions and corrections by contributors | GPLv3 |
+| `tools/stations/manual/<CC>.json` | Additions and corrections by contributors | CC BY-SA 4.0 |
 
-The lists as a whole are distributed under the [GNU GPLv3](../LICENSE), like the rest of UnleashedATS.
-Material adapted from Wikipedia is used under CC BY-SA 4.0, which Creative Commons declares compatible with
-the GPLv3 for adaptations. Each file names its sources.
+The lists as a whole are distributed under [CC BY-SA 4.0](LICENSE.md), because part of them is adapted from
+Wikipedia, which requires it. The firmware and the tools that build the lists are MIT licensed. Each file
+names its sources.
 
 ## Contributing stations
 

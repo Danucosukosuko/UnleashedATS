@@ -29,7 +29,7 @@ First UnleashedATS release, based on ATS-Mini v2.46 and the changes merged after
 
 - Tuning from lists, memories in the same band and AF frequencies fades the audio instead of switching the hardware mute, which thumped the speaker at every step.
 - *Settings → Update FW* installs UnleashedATS releases from <https://github.com/Danucosukosuko/UnleashedATS>.
-- UnleashedATS is released under the GNU GPLv3. The MIT notice of the ATS-Mini code is kept in `LICENSE-ATS-Mini`.
+- UnleashedATS is released under the MIT license, like ATS-Mini. The station lists are distributed under CC BY-SA 4.0.
 
 ## 2.46 (2026-11-18)
 
