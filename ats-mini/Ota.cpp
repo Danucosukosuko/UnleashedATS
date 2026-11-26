@@ -73,6 +73,9 @@ struct OtaState
 
 static OtaState ota;
 
+// Tag of the latest release, as "v<CFW version>-<ATS-Mini version>"
+static char otaLatestTag[16] = "";
+
 static bool otaFail(const char *error)
 {
   Update.abort();
@@ -179,9 +182,8 @@ OtaStatus otaStatus()
     case OTA_CHECK_QUEUED: return {phase, "Checking for updates..."};
     case OTA_AVAILABLE:
     {
-      unsigned version = ota.latestVersion.load();
-      char text[40];
-      snprintf(text, sizeof(text), "New release v%u.%02u available.", version / 100, version % 100);
+      char text[48];
+      snprintf(text, sizeof(text), "New release %s available.", otaLatestTag);
       return {phase, text};
     }
     case OTA_QUEUED:     return {phase, "Update requested..."};
@@ -255,16 +257,20 @@ static bool otaDownloadLatest(bool install)
   if((code != 302 && code != 301) || !location.startsWith(tagPrefix))
     return otaFail("Unable to find the latest release.");
 
+  // UnleashedATS tags carry the CFW version and the ATS-Mini version it is
+  // based on, for example v1.00-2.46. Only the CFW version decides.
   String tag = location.substring(tagPrefix.length());
-  unsigned major, minor;
+  unsigned major, minor, baseMajor, baseMinor;
   char suffix;
-  // A third conversion detects trailing characters, including prerelease suffixes.
-  if(tag.length() > 7 || sscanf(tag.c_str(), "v%u.%u%c", &major, &minor, &suffix) != 2 ||
+  // A fifth conversion detects trailing characters, including prerelease suffixes.
+  if(tag.length() >= sizeof(otaLatestTag) ||
+     sscanf(tag.c_str(), "v%u.%u-%u.%u%c", &major, &minor, &baseMajor, &baseMinor, &suffix) != 4 ||
      major > UINT16_MAX / 100 || minor > 99 || major * 100 + minor > UINT16_MAX)
     return otaFail("Unexpected release version.");
   unsigned version = major * 100 + minor;
   ota.latestVersion = version;
-  const bool newer = version > VER_APP;
+  strcpy(otaLatestTag, tag.c_str());
+  const bool newer = version > VER_CFW;
   if(!newer || !install)
   {
     ota.phase = newer? OTA_AVAILABLE : OTA_CURRENT;
@@ -272,7 +278,7 @@ static bool otaDownloadLatest(bool install)
     return true;
   }
   String url = String(FIRMWARE_URL) + "/releases/download/" + tag +
-               "/ats-mini-" + tag + "-" + otaVariantNames[otaMetadata.variant] + "-ota.bin";
+               "/" CFW_NAME "-" + tag + "-" + otaVariantNames[otaMetadata.variant] + "-ota.bin";
 
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   if(!http.begin(client, url)) return otaFail("Unable to start firmware download.");

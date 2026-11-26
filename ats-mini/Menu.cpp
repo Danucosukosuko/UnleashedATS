@@ -10,6 +10,8 @@
 #include "Memories.h"
 #include "Patches.h"
 #include "Storage.h"
+#include "AltFreq.h"
+#include "Stations.h"
 
 #include <time.h>
 
@@ -112,12 +114,17 @@ static int findBand(uint32_t freq, uint8_t mode, int preferredBand)
 #define MENU_SEEK         5
 #define MENU_SCAN         6
 #define MENU_MEMORY       7
-#define MENU_SQUELCH      8
-#define MENU_BW           9
-#define MENU_AGC_ATT     10
-#define MENU_AVC         11
-#define MENU_SOFTMUTE    12
-#define MENU_SETTINGS    13
+#define MENU_MEMSCAN      8
+#define MENU_AUTOSTORE    9
+#define MENU_STATIONS    10
+#define MENU_AFLIST      11
+#define MENU_EONLIST     12
+#define MENU_SQUELCH     13
+#define MENU_BW          14
+#define MENU_AGC_ATT     15
+#define MENU_AVC         16
+#define MENU_SOFTMUTE    17
+#define MENU_SETTINGS    18
 
 int8_t menuIdx = MENU_VOLUME;
 
@@ -131,6 +138,11 @@ static const char *menu[] =
   "Seek",
   "Scan",
   "Memory",
+  "Mem Scan",
+  "Auto Store",
+  "Stations",
+  "RDS AF",
+  "RDS EON",
   "Squelch",
   "Bandwidth",
   "AGC/ATTN",
@@ -157,16 +169,18 @@ static const char *menu[] =
 #define MENU_RDS          11
 #define MENU_FM_STEREO    12
 #define MENU_FM_REGION    13
-#define MENU_ANTCAP       14
-#define MENU_CALIBRATION  15
-#define MENU_DSP_PATCHES  16
-#define MENU_LOADEIBI     17
-#define MENU_UPDATEFW     18
-#define MENU_USBMODE      19
-#define MENU_TCPMODE      20
-#define MENU_BLEMODE      21
-#define MENU_WIFIMODE     22
-#define MENU_ABOUT        23
+#define MENU_DXMODE       14
+#define MENU_ANTCAP       15
+#define MENU_CALIBRATION  16
+#define MENU_DSP_PATCHES  17
+#define MENU_LOADEIBI     18
+#define MENU_LOADSTN      19
+#define MENU_UPDATEFW     20
+#define MENU_USBMODE      21
+#define MENU_TCPMODE      22
+#define MENU_BLEMODE      23
+#define MENU_WIFIMODE     24
+#define MENU_ABOUT        25
 
 
 static uint8_t updateFwIdx = 0;
@@ -190,10 +204,12 @@ static const char *settings[] =
   "RDS",
   "FM Stereo",
   "FM Region",
+  "DX Mode",
   "Capacitor",
   "Calibration",
   "DSP Patches",
   "Load EiBi",
+  "Load Stations",
   "Update FW",
   "USB Port",
   "TCP Port",
@@ -233,6 +249,39 @@ int getTotalFMStereoModes() { return(ITEM_COUNT(fmStereoDesc)); }
 
 bool audioClamp = true;
 
+// Weak signal listening: no soft mute, earlier mono blend, sensitive seek
+bool dxMode = false;
+
+//
+// Auto Store Menu
+//
+
+static uint8_t autoStoreIdx = 0;
+static const char *const autoStoreActions[] = { "Back", "Add New", "Replace" };
+
+//
+// Station list menus. Item 0 of every list is "Back".
+//
+
+static uint8_t stnLevel = 0;      // 0: countries, 1: stations
+static int stnIdx = 0;            // Highlighted item
+static int stnCountryIdx = 0;     // Country being browsed
+static uint8_t loadLevel = 0;     // 0: regions, 1: countries
+static int loadIdx = 0;           // Highlighted item
+static int loadRegion = 0;        // Region being browsed
+
+//
+// RDS AF and EON menus. Item 0 is "Back". Clicking a frequency tunes to
+// it and lets the encoder move between the frequencies of the list.
+//
+
+static int afMenuIdx = 0;
+static bool afMenuTuning = false;
+static uint8_t eonLevel = 0;      // 0: networks, 1: frequencies
+static int eonIdx = 0;
+static bool eonTuning = false;
+static EonNetwork eonSelected;    // Network being browsed
+
 uint8_t dspPatchesIdx = DSP_PATCHES_DEFAULT;
 
 //
@@ -258,6 +307,8 @@ const RDSMode rdsMode[] =
   { RDS_PS | RDS_PI | RDS_RT | RDS_PT | RDS_CT, "ALL (EU)" },
   { RDS_PS | RDS_PI | RDS_RT | RDS_PT | RDS_CT | RDS_RBDS, "ALL (US)" },
   { RDS_OFF, "OFF"},
+  { RDS_PS | RDS_PI | RDS_RT | RDS_PT | RDS_CT | RDS_AF, "ALL+AF (EU)" },
+  { RDS_PS | RDS_PI | RDS_RT | RDS_PT | RDS_CT | RDS_RBDS | RDS_AF, "ALL+AF (US)" },
 };
 
 uint8_t getRDSMode() { return(rdsMode[rdsModeIdx].mode); }
@@ -587,11 +638,21 @@ uint8_t seekMode(bool toggle)
 {
   static uint8_t mode = SEEK_DEFAULT;
 
-  mode = toggle ? (mode == SEEK_DEFAULT ? SEEK_SCHEDULE : SEEK_DEFAULT) : mode;
+  if(toggle) mode = (mode + 1) % SEEK_MODES;
 
-  // Use normal seek on FM or if there is no schedule loaded
-  if(currentMode == FM || !eibiAvailable() || !clockAvailable())
-    return(SEEK_DEFAULT);
+  // The schedule needs shortwave, a loaded schedule and a clock
+  if(mode==SEEK_SCHEDULE && (currentMode==FM || !eibiAvailable() || !clockAvailable()))
+  {
+    if(!toggle) return(SEEK_DEFAULT);
+    mode = SEEK_AUTO;
+  }
+
+  // There is no band plan to sweep in SSB
+  if(mode==SEEK_AUTO && isSSB())
+  {
+    if(!toggle) return(SEEK_DEFAULT);
+    mode = SEEK_DEFAULT;
+  }
 
   return(mode);
 }
@@ -748,6 +809,275 @@ static void clickScan(bool shortPress)
   else currentCmd = CMD_NONE;
 }
 
+void autoStoreAndReport(uint8_t flags)
+{
+  char text[16];
+
+  // Clear stale parameters
+  clearStationInfo();
+  rssi = snr = 0;
+  drawScreen();
+
+  int stored = autoStoreRun(flags);
+
+  switch(stored)
+  {
+    case ATS_BAD_MODE: sprintf(text, "FM/AM only"); break;
+    case ATS_NO_SLOTS: sprintf(text, "Mem Full"); break;
+    default:           sprintf(text, "Stored %d", stored); break;
+  }
+
+  drawMessage(text);
+  delay(2000);
+  identifyFrequency(currentFrequency);
+}
+
+static void clickAutoStore(bool shortPress)
+{
+  // Either kind of press runs the selected action, the way Update FW does
+  if(autoStoreIdx) autoStoreAndReport(autoStoreIdx==2? ATS_REPLACE : ATS_KEEP_OLD);
+  currentCmd = CMD_NONE;
+}
+
+static void clickMemScan(bool shortPress)
+{
+  // Any click parks the scanner on the current channel
+  memScanStop();
+  currentCmd = CMD_NONE;
+}
+
+//
+// Tune to a frequency in Hz, switching bands as needed
+//
+bool tuneToFrequency(uint32_t freq, uint8_t mode)
+{
+  bool sameKind = (bands[bandIdx].bandMode==FM) == (mode==FM);
+  int band = findBand(freq, mode, sameKind? bandIdx : -1);
+  if(band<0) return(false);
+
+  if(band==bandIdx && currentMode==mode)
+  {
+    muteOn(MUTE_TEMP, true, !audioClamp);
+    bool tuned = updateFrequency(freq, false);
+    muteOn(MUTE_TEMP, false, !audioClamp);
+    clearStationInfo();
+    identifyFrequency(currentFrequency);
+    prefsRequestSave(SAVE_CUR_BAND);
+    return(tuned);
+  }
+
+  Memory memory = {};
+  memory.freq = freq;
+  memory.band = band;
+  memory.mode = mode;
+  return(tuneToMemory(&memory));
+}
+
+//
+// Stations menu: stored countries, then the stations of one country
+//
+static void enterStations()
+{
+  if(!stationsLocalCount())
+  {
+    drawMessage("No Lists");
+    delay(1500);
+    return;
+  }
+
+  stnLevel = 0;
+  stnIdx = 1;
+  currentCmd = CMD_STATIONS;
+}
+
+static void doStations(int16_t enc)
+{
+  if(stnLevel==0)
+  {
+    stnIdx = wrap_range(stnIdx, enc, 0, stationsLocalCount());
+    return;
+  }
+
+  stnIdx = wrap_range(stnIdx, enc, 0, stationsOpenCount());
+
+  StationRecord record;
+  if(stnIdx>0 && stationsOpenRecord(stnIdx - 1, &record))
+    tuneToFrequency(record.freq * 10000UL, FM);
+}
+
+static void clickStations(bool shortPress)
+{
+  if(stnLevel==0)
+  {
+    StationCountry country;
+
+    if(!stnIdx || !stationsLocalCountry(stnIdx - 1, &country))
+      currentCmd = CMD_NONE;
+    else if(shortPress)
+    {
+      // A short press deletes the list of the country
+      char text[40];
+      stationsLocalDelete(stnIdx - 1);
+      snprintf(text, sizeof(text), "Deleted %s", country.code);
+      drawMessage(text);
+      delay(1500);
+      stnIdx = min(stnIdx, stationsLocalCount());
+      if(!stationsLocalCount()) currentCmd = CMD_NONE;
+    }
+    else if(stationsOpen(stnIdx - 1))
+    {
+      stnCountryIdx = stnIdx - 1;
+      stnLevel = 1;
+      // Start on the station closest to the current frequency
+      stnIdx = 1 + (currentMode==FM? stationsOpenFind(currentFrequency) : 0);
+    }
+    return;
+  }
+
+  if(!stnIdx)
+  {
+    stnLevel = 0;
+    stnIdx = stnCountryIdx + 1;
+  }
+  else currentCmd = CMD_NONE;
+}
+
+//
+// Load Stations menu: regions, then their countries
+//
+static void doLoadStations(int16_t enc)
+{
+  int count = loadLevel? stationsIndexCount(loadRegion) : stationsRegionCount();
+  loadIdx = wrap_range(loadIdx, enc, 0, count);
+}
+
+static void clickLoadStations(bool shortPress)
+{
+  if(loadLevel==0)
+  {
+    if(!loadIdx) currentCmd = CMD_NONE;
+    else
+    {
+      loadRegion = loadIdx - 1;
+      loadLevel = 1;
+      loadIdx = 1;
+    }
+    return;
+  }
+
+  if(!loadIdx)
+  {
+    loadLevel = 0;
+    loadIdx = loadRegion + 1;
+  }
+  else stationsDownload(stationsIndexCountry(loadRegion, loadIdx - 1));
+}
+
+//
+// RDS AF menu
+//
+static void enterAfList()
+{
+  if(currentMode!=FM)
+  {
+    drawMessage("FM only");
+    delay(1000);
+    return;
+  }
+
+  // Start on the frequency being received, when it is in the list
+  afMenuIdx = afCount()? 1 : 0;
+  for(int i=0 ; i<afCount() ; i++)
+    if(afFrequency(i)==currentFrequency) afMenuIdx = i + 1;
+
+  afMenuTuning = false;
+  currentCmd = CMD_AFLIST;
+}
+
+static void doAfList(int16_t enc)
+{
+  afMenuIdx = wrap_range(afMenuIdx, enc, 0, afCount());
+
+  // Once a frequency has been clicked, the encoder moves between them
+  if(afMenuTuning && afMenuIdx>0 && afTune(afFrequency(afMenuIdx - 1)))
+    prefsRequestSave(SAVE_CUR_BAND);
+}
+
+static void clickAfList(bool shortPress)
+{
+  if(!afMenuIdx)
+  {
+    afMenuTuning = false;
+    currentCmd = CMD_NONE;
+  }
+  else if(!afMenuTuning)
+  {
+    afMenuTuning = true;
+    if(afTune(afFrequency(afMenuIdx - 1))) prefsRequestSave(SAVE_CUR_BAND);
+  }
+  else afMenuTuning = false;
+}
+
+//
+// RDS EON menu: other networks, then their frequencies
+//
+static void enterEonList()
+{
+  if(currentMode!=FM)
+  {
+    drawMessage("FM only");
+    delay(1000);
+    return;
+  }
+
+  eonLevel = 0;
+  eonIdx = eonCount()? 1 : 0;
+  eonTuning = false;
+  currentCmd = CMD_EONLIST;
+}
+
+static void doEonList(int16_t enc)
+{
+  if(eonLevel==0)
+  {
+    eonIdx = wrap_range(eonIdx, enc, 0, eonCount());
+    return;
+  }
+
+  eonIdx = wrap_range(eonIdx, enc, 0, eonSelected.count);
+  if(eonTuning && eonIdx>0)
+    tuneToFrequency(eonSelected.freq[eonIdx - 1], FM);
+}
+
+static void clickEonList(bool shortPress)
+{
+  if(eonLevel==0)
+  {
+    if(!eonIdx || !eonNetwork(eonIdx - 1, &eonSelected))
+      currentCmd = CMD_NONE;
+    else
+    {
+      eonLevel = 1;
+      eonIdx = eonSelected.count? 1 : 0;
+      eonTuning = false;
+    }
+    return;
+  }
+
+  if(!eonIdx)
+  {
+    eonLevel = 0;
+    eonIdx = eonCount()? 1 : 0;
+    eonTuning = false;
+  }
+  else if(!eonTuning)
+  {
+    eonTuning = true;
+    tuneToFrequency(eonSelected.freq[eonIdx - 1], FM);
+  }
+  else eonTuning = false;
+}
+
 static void doTheme(int16_t enc)
 {
   themeIdx = wrap_range(themeIdx, enc, 0, getTotalThemes() - 1);
@@ -814,9 +1144,43 @@ void applyFmStereo()
 
   if(fmStereoIdx==FM_STEREO_MONO)
     rx.setFmStereoOff();
+  else if(dxMode)
+    rx.setFmStereoDx();
   else
     rx.setFmStereoOn();
 }
+
+//
+// Apply the DX mode to the current band: no soft mute on weak stations,
+// an earlier blend to mono on FM, and seek thresholds low enough to stop
+// on distant stations. Called after every band change.
+//
+void applyDxMode()
+{
+  if(currentMode==FM)
+  {
+    // Chip default is 16dB of soft mute on weak signals
+    rx.setFmSoftMuteMaxAttenuation(dxMode? 0 : 16);
+    rx.setSeekFmRssiThreshold(dxMode? 3 : 5);
+    rx.setSeekFmSNRThreshold(dxMode? 1 : 2);
+    applyFmStereo();
+  }
+  else if(currentMode==AM)
+  {
+    rx.setSeekAmRssiThreshold(dxMode? 5 : 10);
+    rx.setSeekAmSNRThreshold(dxMode? 1 : 3);
+    doSoftMute(0);
+  }
+}
+
+void toggleDxMode()
+{
+  dxMode = !dxMode;
+  applyDxMode();
+  prefsRequestSave(SAVE_SETTINGS);
+}
+
+static void doDxMode() { toggleDxMode(); }
 
 void doFmStereo(int16_t enc)
 {
@@ -1236,7 +1600,8 @@ void doSoftMute(int16_t enc)
   else
     softMuteMaxAttIdx = AmSoftMuteIdx = wrap_range(AmSoftMuteIdx, enc, 0, 32);
 
-  rx.setAmSoftMuteMaxAttenuation(softMuteMaxAttIdx);
+  // DX mode lets weak AM stations through at full volume
+  rx.setAmSoftMuteMaxAttenuation(dxMode && !isSSB()? 0 : softMuteMaxAttIdx);
   if(enc) prefsRequestSave(SAVE_SETTINGS);
 }
 
@@ -1251,6 +1616,28 @@ void doBand(int16_t enc)
   // Enable the new band
   selectBand(bandIdx);
   prefsRequestSave(SAVE_SETTINGS | SAVE_BANDS);
+}
+
+//
+// Switch to a broadcast range: FM, MW, SW or LW. There is no LW band in
+// the band table, long wave lives at the bottom of MW1.
+//
+bool selectBroadcastBand(const char *range)
+{
+  const char *name = !strcmp(range, "FM")? "VHF" : !strcmp(range, "MW")? "MW2" :
+                     !strcmp(range, "SW")? "ALL" : !strcmp(range, "LW")? "MW1" : nullptr;
+  if(!name) return(false);
+
+  for(int i=0 ; i<getTotalBands() ; i++)
+    if(!strcmp(bands[i].bandName, name))
+    {
+      if(i!=bandIdx) doBand(i - bandIdx);
+      if(!strcmp(range, "LW") && (currentMode==FM || currentFrequency>=520000))
+        tuneToFrequency(198000, AM);
+      return(true);
+    }
+
+  return(false);
 }
 
 void doBandwidth(int16_t enc)
@@ -1314,6 +1701,27 @@ static void clickMenu(int cmd, bool shortPress)
       currentCmd = CMD_SCAN;
       clickScan(true);
       break;
+
+    case MENU_MEMSCAN:
+      // There has to be something to scan first
+      if(memScanStart())
+        currentCmd = CMD_MEMSCAN;
+      else
+      {
+        drawMessage("No Memory");
+        delay(1000);
+      }
+      break;
+
+    case MENU_AUTOSTORE:
+      // Start on the action that leaves the stored stations alone
+      autoStoreIdx = 1;
+      currentCmd = CMD_AUTOSTORE;
+      break;
+
+    case MENU_STATIONS: enterStations(); break;
+    case MENU_AFLIST:   enterAfList();   break;
+    case MENU_EONLIST:  enterEonList();  break;
   }
 }
 
@@ -1370,6 +1778,18 @@ static void clickSettings(int cmd, bool shortPress)
     case MENU_LOADEIBI:
       eibiLoadSchedule();
       break;
+
+    case MENU_LOADSTN:
+      // The list of countries comes from the repository first
+      if(stationsLoadIndex())
+      {
+        loadLevel = 0;
+        loadIdx = 1;
+        currentCmd = CMD_LOADSTN;
+      }
+      break;
+
+    case MENU_DXMODE:     currentCmd = CMD_DXMODE;    break;
   }
 }
 
@@ -1410,6 +1830,14 @@ bool doSideBar(uint16_t cmd, int16_t enc, int16_t enca)
     case CMD_WIFIMODE:   doWiFiMode(scrollDirection * enc);break;
     case CMD_ZOOM:       doZoom(enc);break;
     case CMD_ENC_ACCEL:  doEncoderAcceleration();break;
+    case CMD_DXMODE:     doDxMode();break;
+    case CMD_AUTOSTORE:  autoStoreIdx = wrap_range(autoStoreIdx, scrollDirection * enc, 0, LAST_ITEM(autoStoreActions));break;
+    // Taking over the tuning cancels the memory scan
+    case CMD_MEMSCAN:    memScanStop();currentCmd = CMD_NONE;break;
+    case CMD_STATIONS:   doStations(scrollDirection * (stnLevel? enca : enc));break;
+    case CMD_LOADSTN:    doLoadStations(scrollDirection * (loadLevel? enca : enc));break;
+    case CMD_AFLIST:     doAfList(scrollDirection * enc);break;
+    case CMD_EONLIST:    doEonList(scrollDirection * enc);break;
     case CMD_SCROLL:     doScrollDir(enc);break;
     case CMD_UTCOFFSET:  doUTCOffset(scrollDirection * enc);break;
     case CMD_DATETIME:   doDateTime(enc);break;
@@ -1447,6 +1875,12 @@ bool clickHandler(uint16_t cmd, bool shortPress)
     case CMD_SQUELCH:  clickSquelch(shortPress);break;
     case CMD_SEEK:     clickSeek(shortPress);break;
     case CMD_SCAN:     clickScan(shortPress);break;
+    case CMD_MEMSCAN:  clickMemScan(shortPress);break;
+    case CMD_AUTOSTORE:clickAutoStore(shortPress);break;
+    case CMD_STATIONS: clickStations(shortPress);break;
+    case CMD_LOADSTN:  clickLoadStations(shortPress);break;
+    case CMD_AFLIST:   clickAfList(shortPress);break;
+    case CMD_EONLIST:  clickEonList(shortPress);break;
     case CMD_FREQ:     return(clickFreq(shortPress));
     case CMD_DATETIME: clickDateTime(shortPress);break;
     default:           return(false);
@@ -1624,6 +2058,12 @@ static void drawSeek(int x, int y, int sx)
     spr.drawCircle(40+x+(sx/2), 66+y, 10, TH.menu_param);
     spr.drawLine(40+x+(sx/2), 66+y, 40+x+(sx/2), 66+y-7, TH.menu_param);
     spr.drawLine(40+x+(sx/2), 66+y, 40+x+(sx/2)+4, 66+y+4, TH.menu_param);
+  }
+  else if(seekMode()==SEEK_AUTO)
+  {
+    spr.setTextDatum(MC_DATUM);
+    spr.setTextColor(TH.menu_param);
+    spr.drawString("Auto", 40+x+(sx/2), 66+y, FONT_SMALL);
   }
 }
 
@@ -2347,6 +2787,185 @@ static void drawInfo(int x, int y, int sx)
 //
 // Draw side bar (menu or information)
 //
+//
+// Lists whose first item is "Back", drawn without wrapping around
+//
+static void drawList(const char *title, int count, int idx, void (*label)(int, char *, size_t),
+                     int x, int y, int sx, const char *empty = nullptr)
+{
+  drawCommon(title, x, y, sx, true);
+
+  for(int i=-2 ; i<3 ; i++)
+  {
+    int j = idx + i;
+    char text[32];
+
+    if(j<0 || j>count) continue;
+    if(!j) strcpy(text, "Back");
+    else label(j - 1, text, sizeof(text));
+
+    if(i==0)
+    {
+      drawZoomedMenu(text);
+      spr.setTextColor(TH.menu_hl_text, TH.menu_hl_bg);
+    }
+    else spr.setTextColor(TH.menu_item);
+
+    spr.setTextDatum(MC_DATUM);
+    spr.drawString(text, 40+x+(sx/2), 64+y+(i*16), FONT_SMALL);
+  }
+
+  // Say why the list is empty
+  if(!count && empty)
+  {
+    spr.setTextColor(TH.menu_param);
+    spr.drawString(empty, 40+x+(sx/2), 64+y+16, FONT_SMALL);
+  }
+}
+
+static void fitText(char *text, size_t size, const char *src, int maxChars)
+{
+  snprintf(text, size, "%.*s", maxChars, src);
+}
+
+static void drawStations(int x, int y, int sx)
+{
+  if(stnLevel==0)
+  {
+    drawList("Stations", stationsLocalCount(), stnIdx, [](int i, char *text, size_t size) {
+      StationCountry country;
+      if(stationsLocalCountry(i, &country)) fitText(text, size, country.name, 11);
+      else *text = '\0';
+    }, x, y, sx, "No lists");
+    return;
+  }
+
+  // The title follows the municipality of the highlighted station
+  char title[STATION_CITY_LEN + 1] = "Stations";
+  StationRecord record;
+  if(stnIdx>0 && stationsOpenRecord(stnIdx - 1, &record))
+  {
+    stationsField(title, record.city, STATION_CITY_LEN);
+    if(!*title) strcpy(title, "Stations");
+    title[11] = '\0';
+  }
+
+  drawList(title, stationsOpenCount(), stnIdx, [](int i, char *text, size_t size) {
+    StationRecord record;
+    char name[STATION_NAME_LEN + 1];
+    if(!stationsOpenRecord(i, &record)) { *text = '\0'; return; }
+    // The expected RDS name when known, the station name otherwise
+    stationsField(name, record.ps[0]? record.ps : record.name, record.ps[0]? STATION_PS_LEN : STATION_NAME_LEN);
+    snprintf(text, size, "%.1f %.6s", record.freq / 100.0, name);
+  }, x, y, sx);
+}
+
+static void drawLoadStations(int x, int y, int sx)
+{
+  if(loadLevel==0)
+  {
+    drawList("Load List", stationsRegionCount(), loadIdx, [](int i, char *text, size_t size) {
+      fitText(text, size, stationsRegionName(i), 11);
+    }, x, y, sx);
+    return;
+  }
+
+  char title[12];
+  fitText(title, sizeof(title), stationsRegionName(loadRegion), 11);
+  drawList(title, stationsIndexCount(loadRegion), loadIdx, [](int i, char *text, size_t size) {
+    const StationCountry *country = stationsIndexCountry(loadRegion, i);
+    if(!country) { *text = '\0'; return; }
+    // Mark the country already on the receiver
+    snprintf(text, size, "%s%.10s", stationsIsLocal(country->code)? "*" : "", country->name);
+  }, x, y, sx);
+}
+
+static void freqLabel(uint32_t freq, char *text, size_t size)
+{
+  snprintf(text, size, "%s%.1f", freq==currentFrequency? "> " : "", freq / 1000000.0);
+}
+
+static void drawAfList(int x, int y, int sx)
+{
+  drawList(afMenuTuning? "AF Tune" : "RDS AF", afCount(), afMenuIdx, [](int i, char *text, size_t size) {
+    freqLabel(afFrequency(i), text, size);
+  }, x, y, sx, "No AF");
+}
+
+static void drawEonList(int x, int y, int sx)
+{
+  if(eonLevel==0)
+  {
+    drawList("RDS EON", eonCount(), eonIdx, [](int i, char *text, size_t size) {
+      EonNetwork network;
+      if(eonNetwork(i, &network)) fitText(text, size, network.ps, 10);
+      else *text = '\0';
+    }, x, y, sx, "No EON");
+    return;
+  }
+
+  drawList(eonTuning? "EON Tune" : eonSelected.ps, eonSelected.count, eonIdx, [](int i, char *text, size_t size) {
+    freqLabel(eonSelected.freq[i], text, size);
+  }, x, y, sx, "No freqs");
+}
+
+static void drawMemScan(int x, int y, int sx)
+{
+  const Memory memory = getMemory(memScanSlot());
+  char text[16];
+
+  sprintf(text, "Mem %2.2d", memScanSlot() + 1);
+  drawCommon(text, x, y, sx);
+  drawZoomedMenu(text);
+
+  spr.setTextDatum(MC_DATUM);
+  spr.setTextColor(TH.menu_param);
+
+  if(!memory.freq)
+    sprintf(text, "- - -");
+  else if(memory.mode==FM)
+    sprintf(text, "%3.2f", memory.freq / 1000000.0);
+  else
+    sprintf(text, "%lu", (unsigned long)(memory.freq / 1000));
+
+  spr.drawString(text, 40+x+(sx/2), 50+y, FONT_LARGE);
+  spr.drawString(memory.name[0]? memory.name : bandModeDesc[memory.mode], 40+x+(sx/2), 76+y, FONT_SMALL);
+
+  if(!memScanRunning())
+    spr.drawString("Done", 40+x+(sx/2), 96+y, FONT_SMALL);
+  else
+    spr.drawString(memScanListening()? "Holding" : "Seeking", 40+x+(sx/2), 96+y, FONT_SMALL);
+}
+
+static void drawAutoStore(int x, int y, int sx)
+{
+  drawCommon(menu[MENU_AUTOSTORE], x, y, sx, true);
+
+  for(int i=0 ; i<ITEM_COUNT(autoStoreActions) ; i++)
+  {
+    if(i == autoStoreIdx)
+    {
+      drawZoomedMenu(autoStoreActions[i]);
+      spr.setTextColor(TH.menu_hl_text, TH.menu_hl_bg);
+    }
+    else
+      spr.setTextColor(TH.menu_item);
+
+    spr.setTextDatum(MC_DATUM);
+    spr.drawString(autoStoreActions[i], 40+x+(sx/2), 64+y+((i-autoStoreIdx)*16), FONT_SMALL);
+  }
+}
+
+static void drawDxMode(int x, int y, int sx)
+{
+  drawCommon(settings[MENU_DXMODE], x, y, sx);
+  drawZoomedMenu(settings[MENU_DXMODE]);
+  spr.setTextDatum(MC_DATUM);
+
+  spr.setTextColor(TH.menu_param);
+  spr.drawString(dxMode ? "On" : "Off", 40+x+(sx/2), 60+y, FONT_LARGE);
+}
+
 void drawSideBar(uint16_t cmd, int x, int y, int sx)
 {
   if(sleepOn()) return;
@@ -2389,6 +3008,13 @@ void drawSideBar(uint16_t cmd, int x, int y, int sx)
     case CMD_UTCOFFSET:  drawUTCOffset(x, y, sx);  break;
     case CMD_DATETIME:   drawDateTime(x, y, sx);   break;
     case CMD_SQUELCH:    drawSquelch(x, y, sx);    break;
+    case CMD_MEMSCAN:    drawMemScan(x, y, sx);    break;
+    case CMD_AUTOSTORE:  drawAutoStore(x, y, sx);  break;
+    case CMD_STATIONS:   drawStations(x, y, sx);   break;
+    case CMD_LOADSTN:    drawLoadStations(x, y, sx); break;
+    case CMD_AFLIST:     drawAfList(x, y, sx);     break;
+    case CMD_EONLIST:    drawEonList(x, y, sx);    break;
+    case CMD_DXMODE:     drawDxMode(x, y, sx);     break;
     default:             drawInfo(x, y, sx);       break;
   }
 }

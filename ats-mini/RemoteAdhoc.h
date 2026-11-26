@@ -8,6 +8,7 @@ struct AdhocState {
   uint32_t reportTimer = millis();
   uint8_t sequence = 0;
   bool logging = false;
+  bool jsonLogging = false;
 };
 
 // Consume the borrowed frame synchronously; return whether the display needs updating.

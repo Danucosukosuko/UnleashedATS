@@ -22,7 +22,12 @@ static bool remoteSetFrequency(Stream& stream, uint32_t freqHz)
 {
   const Band *band = getCurrentBand();
   if(freqHz < band->minimumFreq || freqHz > band->maximumFreq)
-    return remoteShowError(stream, "Frequency is out of range for the current band");
+  {
+    // Move to a band that covers the frequency, FM above 30MHz
+    uint8_t mode = freqHz>=30000000? FM : currentMode==FM? AM : currentMode;
+    if(tuneToFrequency(freqHz, mode)) return true;
+    return remoteShowError(stream, "Frequency is out of range for every band");
+  }
   if(!updateFrequency(freqHz, false)) return false;
 
   clearStationInfo();
@@ -192,6 +197,21 @@ static bool remoteExecuteCommand(Stream& stream, AdhocState& state, const AdhocC
     case Id::ToggleLog:
       state.logging = !state.logging;
       return false;
+    case Id::ToggleJsonLog:
+      state.jsonLogging = !state.jsonLogging;
+      if(state.jsonLogging) statusJsonWrite(stream, true);
+      return false;
+    case Id::ToggleDx:
+      toggleDxMode();
+      return true;
+    case Id::ToggleMono:
+      doFmStereo(1);
+      return true;
+    case Id::SeekUp:
+    case Id::SeekDown:
+      seekFrequency(command.id == Id::SeekUp? 1 : -1);
+      prefsRequestSave(SAVE_CUR_BAND);
+      return true;
     case Id::GetMemories:
       remoteGetMemories(stream);
       return false;
@@ -212,12 +232,14 @@ static bool remoteExecuteCommand(Stream& stream, AdhocState& state, const AdhocC
 
 void remoteAdhocTick(Stream& stream, AdhocState& state)
 {
-  if(!state.logging) return;
+  if(!state.logging && !state.jsonLogging) return;
   const uint32_t now = millis();
   if(now - state.reportTimer < 500) return;
   state.reportTimer = now;
   state.sequence++;
-  remotePrintStatus(stream, state);
+  if(state.logging) remotePrintStatus(stream, state);
+  // Everything the receiver knows, one JSON object per line
+  if(state.jsonLogging) statusJsonWrite(stream, true);
 }
 
 // Echo and prompts are ad hoc terminal behavior, not framing rules.

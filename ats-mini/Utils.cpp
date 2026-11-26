@@ -118,11 +118,13 @@ bool statusTick(uint32_t now)
 //
 const char *getVersion(bool shorter)
 {
-  static char versionString[35] = "\0";
+  static char versionString[64] = "";
 
-  sprintf(versionString, "%s%sF/W: v%1.1d.%2.2d %s",
-    shorter ? "" : RECEIVER_NAME,
+  sprintf(versionString, "%s%sF/W: v%1.1d.%2.2d-%1.1d.%2.2d %s",
+    shorter ? "" : CFW_NAME,
     shorter ? "" : " ",
+    VER_CFW / 100,
+    VER_CFW % 100,
     VER_APP / 100,
     VER_APP % 100,
     __DATE__
@@ -132,11 +134,11 @@ const char *getVersion(bool shorter)
 }
 
 //
-// HTTP User-Agent for downloads
+// Get HTTP User-Agent string
 //
 String getUserAgent()
 {
-  return("ATS-Mini/" + String(getVersion(true)));
+  return(CFW_NAME "/" + String(getVersion(true)));
 }
 
 //
@@ -480,6 +482,35 @@ uint16_t freqFromHz(uint32_t freq, uint8_t mode)
 uint32_t freqToHz(uint16_t freq, uint8_t mode)
 {
   return(mode == FM ? freq * 10000 : freq * 1000);
+}
+
+//
+// Get the RSSI (dBuV) and SNR (dB) levels that count as a station in
+// the current mode. These are somewhat tighter than the seek
+// thresholds, to keep plain noise out of the memory slots, and looser
+// in DX mode. A squelch setting, when enabled, overrides the level it
+// applies to.
+//
+void getSignalThresholds(uint8_t *minRssi, uint8_t *minSnr)
+{
+  if(currentMode==FM)
+  {
+    *minRssi = dxMode? 8 : 12;
+    *minSnr  = dxMode? 4 : 6;
+  }
+  else
+  {
+    *minRssi = dxMode? 10 : 14;
+    *minSnr  = dxMode? 3 : 4;
+  }
+
+  if(currentSquelch[currentMode] & 0x7f)
+  {
+    if(currentSquelch[currentMode] & 0x80)
+      *minSnr = currentSquelch[currentMode] & 0x7f;
+    else
+      *minRssi = currentSquelch[currentMode] & 0x7f;
+  }
 }
 
 //

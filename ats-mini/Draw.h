@@ -31,6 +31,8 @@
 #define WIFI_OFFSET_Y    0    // WiFi y offset
 #define BLE_OFFSET_X   104    // BLE x offset
 #define BLE_OFFSET_Y     0    // BLE y offset
+#define RDSIND_OFFSET_X 257   // RDS service labels x offset, under the unit
+#define RDSIND_OFFSET_Y  60   // RDS service labels y offset
 
 void drawMessage(const char *msg);
 void drawZoomedMenu(const char *text, bool force = false);
@@ -44,7 +46,9 @@ void drawBandAndMode(const char *band, const char *mode, int x, int y);
 void drawFrequency(uint32_t freq, int x, int y, int ux, int uy, uint8_t hl);
 void drawLongStationName(const char *name, int x, int y);
 void drawStationName(const char *name, int x, int y);
-void drawSMeter(int strength, int x, int y);
+void drawSMeter(int strength, int peak, int x, int y);
+uint8_t smeterPeak(uint8_t rssi);
+void drawRdsIndicators(int x, int y);
 void drawStereoIndicator(int x, int y, bool stereo = true);
 bool drawStatus(int x, int y);
 void drawRadioText(int y, int ymax);

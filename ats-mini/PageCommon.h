@@ -39,6 +39,7 @@ static void webNavigation(String &out, const char *activePage)
   static const struct { const char *name; const char *path; } pages[] =
   {
     {"Status", "/"},
+    {"Remote", "/remote"},
     {"Memory", "/memory"},
     {"Config", "/config"},
     {"Wi-Fi", "/wifi"},

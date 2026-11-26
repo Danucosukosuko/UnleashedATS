@@ -19,6 +19,7 @@
 #include "PageWiFi.h"
 #include "PageUpdate.h"
 #include "PagePatches.h"
+#include "PageRemote.h"
 
 #include <new>
 #include <mutex>
@@ -73,6 +74,75 @@ static struct
 } configSettings;
 
 static std::atomic<int> pendingWiFiMode{-1};
+
+// Remote control commands from the /remote page, run on the main task
+static struct
+{
+  std::mutex mutex;
+  uint32_t tune = 0;
+  int step = 0, seek = 0, mode = 0, volume = -1;
+  char range[3] = "";
+  bool dx = false, mono = false;
+} remoteCmd;
+
+static void webRemoteCommand(AsyncWebServerRequest *request)
+{
+  if(!webIsAuthenticated(request)) return request->requestAuthentication();
+
+  String c = request->hasArg("c")? request->arg("c") : "";
+  int d = request->hasArg("d")? request->arg("d").toInt() : 0;
+  d = d>0? 1 : d<0? -1 : 0;
+
+  std::lock_guard<std::mutex> lock(remoteCmd.mutex);
+  if(c == "tune")      remoteCmd.tune = strtoul(request->arg("f").c_str(), nullptr, 10);
+  else if(c == "step") remoteCmd.step += d;
+  else if(c == "seek") remoteCmd.seek = d;
+  else if(c == "mode") remoteCmd.mode += d? d : 1;
+  else if(c == "vol")  remoteCmd.volume = constrain(request->arg("v").toInt(), 0, 63);
+  else if(c == "dx")   remoteCmd.dx = !remoteCmd.dx;
+  else if(c == "mono") remoteCmd.mono = !remoteCmd.mono;
+  else if(c == "band")
+  {
+    String name = request->arg("name");
+    snprintf(remoteCmd.range, sizeof(remoteCmd.range), "%s", name.c_str());
+  }
+  else return request->send(400, "text/plain", "Unknown command");
+
+  request->send(204);
+}
+
+// Apply the queued remote commands; returns redraw status
+static bool webRemoteTick()
+{
+  std::unique_lock<std::mutex> lock(remoteCmd.mutex);
+  uint32_t tune = remoteCmd.tune;
+  int step = remoteCmd.step, seek = remoteCmd.seek, mode = remoteCmd.mode;
+  int volume = remoteCmd.volume;
+  char range[3];
+  memcpy(range, remoteCmd.range, sizeof(range));
+  remoteCmd.range[0] = '\0';
+  bool dx = remoteCmd.dx, mono = remoteCmd.mono;
+  remoteCmd.tune = 0;
+  remoteCmd.step = remoteCmd.seek = remoteCmd.mode = 0;
+  remoteCmd.volume = -1;
+  remoteCmd.dx = remoteCmd.mono = false;
+  lock.unlock();
+
+  bool redraw = false;
+  if(range[0]) redraw |= selectBroadcastBand(range);
+  if(tune)
+  {
+    uint8_t mode = tune>=30000000? FM : currentMode==FM? AM : currentMode;
+    redraw |= tuneToFrequency(tune, mode);
+  }
+  if(step) { redraw |= doTune(step); prefsRequestSave(SAVE_CUR_BAND); }
+  if(seek) { seekFrequency(seek); prefsRequestSave(SAVE_CUR_BAND); redraw = true; }
+  if(mode) { doMode(mode); redraw = true; }
+  if(volume>=0) { doVolume(volume - ::volume); redraw = true; }
+  if(dx) { toggleDxMode(); redraw = true; }
+  if(mono) { doFmStereo(1); redraw = true; }
+  return(redraw);
+}
 
 struct SplashUploadState
 {
@@ -154,6 +224,7 @@ bool webTick()
 {
   otaTick();
   bool redraw = patchesTick();
+  redraw |= webRemoteTick();
   std::unique_lock<std::mutex> lock(configSettings.mutex);
   if(configSettings.pending)
   {
@@ -251,6 +322,20 @@ void webInit()
     request->send(200, "text/html", webMemoryPage());
   });
   server.on("/memory", HTTP_POST, webSetMemories);
+
+  // FM-DX style remote control
+  server.on("/remote", HTTP_GET, [] (AsyncWebServerRequest *request) {
+    if(!webIsAuthenticated(request)) return request->requestAuthentication();
+    request->send(200, "text/html", (const uint8_t *)pageRemote, strlen(pageRemote));
+  });
+  server.on("/api/status", HTTP_GET, [] (AsyncWebServerRequest *request) {
+    if(!webIsAuthenticated(request)) return request->requestAuthentication();
+    AsyncResponseStream *response = request->beginResponseStream("application/json");
+    response->addHeader("Cache-Control", "no-store");
+    statusJsonWrite(*response, false);
+    request->send(response);
+  });
+  server.on("/api/cmd", HTTP_POST, webRemoteCommand);
 
   server.on("/config", HTTP_ANY, [] (AsyncWebServerRequest *request) {
     if(!webIsAuthenticated(request)) return request->requestAuthentication();

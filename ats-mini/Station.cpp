@@ -4,6 +4,8 @@
 #include "Menu.h"
 #include "Memories.h"
 #include "EIBI.h"
+#include "AltFreq.h"
+#include "Stations.h"
 
 // CB frequency range in Hz
 #define MIN_CB_FREQUENCY 26060000
@@ -75,15 +77,23 @@ const char *getStationName()
   if(switchThemeEditor())
     return("*STATION*");
 
-  const char *station = currentMode!=FM || (getRDSMode() & RDS_PS)? bufStationName : "";
+  // Names from the station lists are marked like the EiBi ones
+  bool listed = bufStationName[0]==(char)0xFF;
+  const char *station = currentMode!=FM || listed || (getRDSMode() & RDS_PS)? bufStationName : "";
   // Live FM identification takes precedence over a saved name.
-  if(currentMode==FM && station[strspn(station, " ")]) return(station);
+  if(currentMode==FM && !listed && station[strspn(station, " ")]) return(station);
 
   static char memoryName[10];
   if(findMemoryName(currentFrequency, currentMode, bandIdx, memoryIdx, memoryName))
     return(memoryName);
 
   return(station);
+}
+
+const char *getRdsStationName()
+{
+  bool fromRds = currentMode==FM && bufStationName[0]!=(char)0xFF && (getRDSMode() & RDS_PS);
+  return(fromRds? bufStationName : "");
 }
 
 const char *getRadioText()
@@ -103,6 +113,7 @@ uint16_t getRdsPiCode()
 
 void clearStationInfo()
 {
+  rdsExtraHide();
   bufStationName[0] = '\0';
   bufProgramInfo[0] = '\0';
   bufRadioText[0]   = '\0'; // Multiline!
@@ -238,6 +249,11 @@ bool checkRds()
     needRedraw |= (mode & RDS_CT) && showRdsTime();
     needRedraw |= (mode & RDS_PT) && showRdsProgramType(rx.getRdsProgramTypeX(), !!(mode & RDS_RBDS));
 
+    // Alternative frequencies, other networks and traffic flags
+    bool hadAf = afPresent(), hadEon = eonPresent();
+    rdsExtraGroup();
+    needRedraw |= hadAf!=afPresent() || hadEon!=eonPresent();
+
     // The reported count includes the group returned by this read (AN332).
     if(count==1) break;
   }
@@ -338,8 +354,13 @@ bool identifyFrequency(uint32_t freq, bool periodic)
   static uint32_t last_freq = 0;
   static bool name_found = false;
 
-  // RDS has priority on FM
-  if(currentMode==FM) return(false);
+  // On FM, a name received over RDS has priority over the station lists
+  if(currentMode==FM)
+  {
+    if(bufStationName[0] && bufStationName[0]!=(char)0xFF) return(false);
+    const char *listed = stationsIdentify(freq, periodic);
+    return(showStationName(listed? listed : "", true));
+  }
 
   // Do not try to look up static names more than once for the same freq
   if(periodic && last_freq==freq && name_found) return(false);

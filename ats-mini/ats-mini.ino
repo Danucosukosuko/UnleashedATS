@@ -19,6 +19,8 @@
 #include "TcpMode.h"
 #include "Splash.h"
 #include "Web.h"
+#include "AltFreq.h"
+#include "Stations.h"
 #include <stdlib.h>
 #include <time.h>
 
@@ -260,6 +262,9 @@ void setup()
     ledcWrite(PIN_LCD_BL, currentBrt);
     delay(3000);
   }
+
+  // Greet the user after a new firmware has been flashed or installed
+  welcomeCheck();
   drawScreen();
   ledcWrite(PIN_LCD_BL, currentBrt);
 
@@ -465,6 +470,10 @@ void useBand(Band *band)
   doAgc(0);
   // Set currentAVC values based on mode (AM, SSB)
   doAvc(0);
+  // Weak signal settings, after the defaults above
+  applyDxMode();
+  // A new band starts without alternative frequencies
+  rdsExtraReset();
   // Wait a bit for things to calm down
   delay(100);
   // Clear signal strength readings
@@ -533,6 +542,45 @@ void showFrequencySeek(uint16_t freq)
 }
 
 //
+// Run the receiver seek up or down from the current frequency
+//
+static void seekStation(int16_t enc)
+{
+  // Clear stale parameters
+  clearStationInfo();
+  rssi = snr = 0;
+
+  // Clear only the encoder latch. Pending remote input cancels the seek
+  // and is consumed without executing its command.
+  seekStop = false;
+  if(!consumeAbortPending())
+  {
+    uint32_t savedFrequency = currentFrequency;
+    rx.seekStationProgress(showFrequencySeek, consumeAbortPending, enc>0? 1 : 0);
+    uint32_t target = freqToHz(rx.getCurrentFrequency(), currentMode);
+    // Cancellation status can precede the final hardware frequency.
+    // Retune and confirm the reported position before accepting it.
+    currentFrequency = savedFrequency;
+    updateFrequency(target, true);
+  }
+}
+
+//
+// Seek requested by the remote controls, whatever the Seek menu is set to
+//
+void seekFrequency(int8_t dir)
+{
+  muteOn(MUTE_TEMP, true, !audioClamp);
+  if(isSSB())
+    updateFrequency(currentFrequency + (int64_t)dir * getCurrentStep()->step, true);
+  else
+    seekStation(dir);
+  clearStationInfo();
+  identifyFrequency(currentFrequency);
+  muteOn(MUTE_TEMP, false, !audioClamp);
+}
+
+//
 // Handle encoder rotation in seek mode
 //
 bool doSeek(int16_t enc, int16_t enca)
@@ -545,26 +593,12 @@ bool doSeek(int16_t enc, int16_t enca)
     {
       updateFrequency(currentFrequency + (int64_t)enca * getCurrentStep()->step, true);
     }
-    else
-    {
-      // Clear stale parameters
-      clearStationInfo();
-      rssi = snr = 0;
-
-      // Clear only the encoder latch. Pending remote input cancels the seek
-      // and is consumed without executing its command.
-      seekStop = false;
-      if(!consumeAbortPending())
-      {
-        uint32_t savedFrequency = currentFrequency;
-        rx.seekStationProgress(showFrequencySeek, consumeAbortPending, enc>0? 1 : 0);
-        uint32_t target = freqToHz(rx.getCurrentFrequency(), currentMode);
-        // Cancellation status can precede the final hardware frequency.
-        // Retune and confirm the reported position before accepting it.
-        currentFrequency = savedFrequency;
-        updateFrequency(target, true);
-      }
-    }
+    else seekStation(enc);
+  }
+  else if(seekMode() == SEEK_AUTO && enc)
+  {
+    // Rebuild the memory contents from a full sweep of the band
+    autoStoreAndReport(ATS_CLEAR_ALL);
   }
   else if(seekMode() == SEEK_SCHEDULE && enc)
   {
@@ -814,7 +848,10 @@ void loop()
   // Disable commands control
   if((currentTime - elapsedCommand) > ELAPSED_COMMAND)
   {
-    if(currentCmd != CMD_NONE && currentCmd != CMD_SEEK && currentCmd != CMD_SCAN && currentCmd != CMD_MEMORY)
+    // Long lists and running scans stay open until left on purpose
+    if(currentCmd != CMD_NONE && currentCmd != CMD_SEEK && currentCmd != CMD_SCAN && currentCmd != CMD_MEMORY &&
+       currentCmd != CMD_MEMSCAN && currentCmd != CMD_STATIONS &&
+       currentCmd != CMD_LOADSTN && currentCmd != CMD_AFLIST && currentCmd != CMD_EONLIST)
     {
       currentCmd = CMD_NONE;
       needRedraw = true;
@@ -842,6 +879,22 @@ void loop()
   {
     needRedraw |= (currentMode == FM) && checkRds();
     lastRDSCheck = currentTime;
+  }
+
+  // Follow the station to an alternative frequency when it fades out
+  if(afTickTime())
+  {
+    // Current frequency has changed
+    prefsRequestSave(SAVE_CUR_BAND);
+    needRedraw = true;
+  }
+
+  // Hop through the memory slots while the memory scan runs
+  if(memScanTickTime())
+  {
+    // Current frequency has changed
+    prefsRequestSave(SAVE_CUR_BAND);
+    needRedraw = true;
   }
 
   // Periodically check schedule

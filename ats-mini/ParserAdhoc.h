@@ -38,6 +38,11 @@ struct AdhocCommand {
     SetTheme,
     GetTheme,
     SetFrequency,
+    ToggleJsonLog,
+    SeekUp,
+    SeekDown,
+    ToggleDx,
+    ToggleMono,
   };
 
   static constexpr size_t BAND_LEN = 8;

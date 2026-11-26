@@ -24,7 +24,10 @@
 #define CMD_MEMORY     0x1900 // |
 #define CMD_SEEK       0x1A00 // |
 #define CMD_SCAN       0x1B00 // |
-#define CMD_SQUELCH    0x1C00 //-+
+#define CMD_SQUELCH    0x1C00 // |
+#define CMD_MEMSCAN    0x1D00 // |
+#define CMD_AUTOSTORE  0x1E00 // |
+#define CMD_STATIONS   0x1F00 //-+
 #define CMD_SETTINGS   0x2000 //-SETTINGS MODE starts here
 #define CMD_BRT        0x2100 // |
 #define CMD_CAL        0x2200 // |
@@ -49,7 +52,11 @@
 #define CMD_ABOUT      0x3500 // |
 #define CMD_OFFTIMER   0x3600 // |
 #define CMD_ANTCAP     0x3700 // |
-#define CMD_ENC_ACCEL  0x3800 //-+
+#define CMD_ENC_ACCEL  0x3800 // |
+#define CMD_AFLIST     0x3900 // |
+#define CMD_EONLIST    0x3A00 // |
+#define CMD_LOADSTN    0x3B00 // |
+#define CMD_DXMODE     0x3C00 //-+
 
 // UI Layouts
 #define UI_DEFAULT  0
@@ -58,6 +65,8 @@
 // Seek modes
 #define SEEK_DEFAULT  0
 #define SEEK_SCHEDULE 1
+#define SEEK_AUTO     2
+#define SEEK_MODES    3
 
 //
 // Data Types
@@ -129,6 +138,12 @@ void doSelectDigit(int16_t enc);
 bool clickHandler(uint16_t cmd, bool shortPress);
 void selectBand(uint8_t idx, bool drawLoadingPatch = true);
 void applyFmStereo();
+void applyDxMode();
+bool tuneToMemory(const Memory *memory);
+bool tuneToFrequency(uint32_t freq, uint8_t mode);
+bool selectBroadcastBand(const char *range);
+void toggleDxMode();
+void autoStoreAndReport(uint8_t flags);
 int getTotalBands();
 int getTotalModes();
 int getTotalFMRegions();

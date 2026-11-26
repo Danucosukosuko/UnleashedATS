@@ -17,16 +17,22 @@ static constexpr const lgfx::IFont* FONT_SMALL   = &lgfx::fonts::Font2;  // 16px
 static constexpr const lgfx::IFont* FONT_LARGE   = &lgfx::fonts::Font4;  // 26px values and titles
 static constexpr const lgfx::IFont* FONT_DIGITS  = &lgfx::fonts::Font7;  // 48px 7-segment digits
 
-#define RECEIVER_DESC  "ESP32-SI4732 Receiver"
+#define CFW_NAME       "UnleashedATS"
+#define RECEIVER_DESC  "UnleashedATS CFW"
+// Kept as the Bluetooth, Wi-Fi access point and mDNS name, which
+// companion apps look for
 #define RECEIVER_NAME  "ATS-Mini"
-#define FIRMWARE_URL   "https://github.com/esp32-si4732/ats-mini"
-#define MANUAL_URL     "https://esp32-si4732.github.io/ats-mini/manual.html"
+#define FIRMWARE_URL   "https://github.com/Danucosukosuko/UnleashedATS"
+#define MANUAL_URL     "https://danucosukosuko.github.io/UnleashedATS/manual.html"
+#define STATIONS_URL   "https://raw.githubusercontent.com/Danucosukosuko/UnleashedATS/main/stations"
 #define AUTHORS_LINE1  "Authors: PU2CLR (Ricardo Caratti),"
 #define AUTHORS_LINE2  "Volos Projects, Ralph Xavier, Sunnygold,"
 #define AUTHORS_LINE3  "Goshante, G8PTN (Dave), R9UCL (Max Arnold),"
 #define AUTHORS_LINE4  "Marat Fayzullin"
+#define AUTHORS_LINE5  "UnleashedATS CFW: Danucosukosuko"
 
-#define VER_APP        246  // Firmware version
+#define VER_CFW        100  // UnleashedATS version (v1.00)
+#define VER_APP        246  // ATS-Mini version the CFW is based on
 #define VER_OTA          1  // OTA compatibility; bump when a full USB flash is required
 #define VER_SETTINGS    71  // Settings version
 #define VER_MEMORIES    71  // Memories version
@@ -47,6 +53,7 @@ static constexpr const lgfx::IFont* FONT_DIGITS  = &lgfx::fonts::Font7;  // 48px
 #define RDS_RT        0b00001000  // Radio text
 #define RDS_PT        0b00010000  // Program type
 #define RDS_RBDS      0b00100000  // Use US PTYs
+#define RDS_AF        0b01000000  // Follow alternative frequencies
 
 // DSP patch options
 #define DSP_PATCHES_DEFAULT      0
@@ -225,6 +232,7 @@ extern uint8_t fmStereoIdx;
 extern bool audioClamp;
 extern bool autoAntennaCapacitor;
 extern uint8_t dspPatchesIdx;
+extern bool dxMode;
 
 extern int8_t agcIdx;
 extern int8_t agcNdx;
@@ -240,7 +248,8 @@ void setEncoderHalfStep(bool enabled);
 uint16_t getReceiverFrequency(uint32_t freq);
 int getCurrentBFO();
 bool updateFrequency(int64_t newFreq, bool wrap = true);
-bool doSeek(int16_t enc);
+bool doSeek(int16_t enc, int16_t enca);
+bool doTune(int16_t enc);
 bool clickFreq(bool shortPress);
 uint8_t doAbout(int16_t enc);
 bool consumeAbortPending();
@@ -254,8 +263,35 @@ void scanRun(uint32_t centerFreq, uint32_t step);
 float scanGetRSSI(uint32_t freq);
 float scanGetSNR(uint32_t freq);
 
+// AutoStore.cpp
+#define ATS_BAD_MODE    -1 // Current mode cannot be swept
+#define ATS_NO_SLOTS    -2 // There are no free memory slots left
+#define ATS_KEEP_OLD  0x00 // Store into the free memory slots
+#define ATS_REPLACE   0x01 // Drop the stations of this band first
+#define ATS_CLEAR_ALL 0x02 // Drop every stored station first
+int autoStoreRun(uint8_t flags);
+
+// MemScan.cpp
+bool memScanStart();
+void memScanStop();
+bool memScanRunning();
+bool memScanListening();
+uint8_t memScanSlot();
+bool memScanTickTime();
+
+// Welcome.cpp
+void welcomeCheck();
+
+// Status.cpp
+class Print;
+void statusJsonWrite(Print &out, bool live);
+
+// Tune with the receiver seek, outside of the Seek menu
+void seekFrequency(int8_t dir);
+
 // Station.c
 const char *getStationName();
+const char *getRdsStationName();
 const char *getRadioText();
 const char *getProgramInfo();
 const char *getRdsTime();

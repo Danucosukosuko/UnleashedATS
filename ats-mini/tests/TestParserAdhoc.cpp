@@ -32,6 +32,8 @@ static void testSingleByteCommands() {
     {'C', AdhocId::CaptureScreen}, {'c', AdhocId::CaptureScreenBinary},
     {'t', AdhocId::ToggleLog}, {'$', AdhocId::GetMemories},
     {'T', AdhocId::ToggleThemeEditor}, {'@', AdhocId::GetTheme},
+    {'J', AdhocId::ToggleJsonLog}, {'G', AdhocId::SeekUp}, {'g', AdhocId::SeekDown},
+    {'X', AdhocId::ToggleDx}, {'Z', AdhocId::ToggleMono},
   };
   FramerState state;
   ByteSpan frame;

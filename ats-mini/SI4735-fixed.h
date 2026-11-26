@@ -251,6 +251,38 @@ class SI4735_fixed: public SI4735
       return decodeRadioText(getRdsVersionCode());
     }
 
+    // Raw RDS blocks of the group just read (0=A ... 3=D)
+    uint16_t getRdsBlock(uint8_t block)
+    {
+      switch(block)
+      {
+        case 0:  return (uint16_t(currentRdsStatus.resp.BLOCKAH) << 8) | currentRdsStatus.resp.BLOCKAL;
+        case 1:  return (uint16_t(currentRdsStatus.resp.BLOCKBH) << 8) | currentRdsStatus.resp.BLOCKBL;
+        case 2:  return (uint16_t(currentRdsStatus.resp.BLOCKCH) << 8) | currentRdsStatus.resp.BLOCKCL;
+        default: return (uint16_t(currentRdsStatus.resp.BLOCKDH) << 8) | currentRdsStatus.resp.BLOCKDL;
+      }
+    }
+
+    // TRUE when blocks B, C and D of the group just read carry at most a
+    // couple of corrected bit errors, good enough for frequency lists
+    bool getRdsBlocksReliable()
+    {
+      return currentRdsStatus.resp.BLEB<=1 && currentRdsStatus.resp.BLEC<=1 &&
+             currentRdsStatus.resp.BLED<=1;
+    }
+
+    // Blend thresholds for weak signal listening: the audio drops to mono
+    // well before the stereo hiss becomes noticeable
+    void setFmStereoDx()
+    {
+      setFmBlendRssiStereoThreshold(56);
+      setFmBLendRssiMonoThreshold(40);
+      setFmBlendSnrStereoThreshold(36);
+      setFmBLendSnrMonoThreshold(22);
+      setFmBlendMultiPathStereoThreshold(15);
+      setFmBlendMultiPathMonoThreshold(45);
+    }
+
     // Implementing the empty SI4735::setFmStereoOff() placeholder by
     // moving every blend threshold beyond reach, which pins the audio to mono
     void setFmStereoOff()
