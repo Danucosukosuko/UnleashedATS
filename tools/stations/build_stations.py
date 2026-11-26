@@ -48,6 +48,7 @@ USER_AGENT = os.environ.get("STATIONS_USER_AGENT", "stations-list-builder/1.0")
 REQUEST_DELAY = float(os.environ.get("STATIONS_REQUEST_DELAY", "1.0"))  # Seconds between requests
 FORMAT_VERSION = 1
 PS_LEN = 8                      # RDS Programme Service name
+REGION_LEN = 23                 # Longest province or state name the receiver keeps
 
 FM_MIN, FM_MAX = 64.0, 108.0   # OIRT, Japanese and CCIR FM bands, in MHz
 NAME_LEN, CITY_LEN = 23, 19     # Longest names the receiver keeps
@@ -255,6 +256,8 @@ SELECT ?c ?iso ?name ?cont ?lang WHERE {
         if r.get("lang") and r["lang"] not in c["langs"]:
             c["langs"].append(r["lang"])
     for c in countries.values():
+        if "en" in c["langs"]:
+            c["langs"] = ["en"] + [l for l in c["langs"] if l != "en"]
         region = REGION_OVERRIDE.get(c["code"])
         for q in c["continents"]:
             region = region or CONTINENTS.get(q)
@@ -310,18 +313,83 @@ def pick_label(labels, langs, prefer_native=False):
 
 
 #
+# Provinces, states and regions of the places, through Wikidata
+#
+
+# Spain is browsed by province, the other countries by their first level
+REGION_CLASS = {"ES": "wd:Q162620"}
+FIRST_LEVEL = "wd:Q10864048"
+
+
+def regions_of(places, countries):
+    """{place qid: (region qid)} for the places of each country."""
+    out = {}
+    by_cc = {}
+    for qid, cc in places.items():
+        if qid and qid.startswith("Q"):
+            by_cc.setdefault(cc, []).append(qid)
+    for cc, qids in by_cc.items():
+        cls = REGION_CLASS.get(cc)
+        test = f"?r wdt:P31 {cls} ." if cls else f"?r wdt:P31/wdt:P279* {FIRST_LEVEL} ."
+        for i in range(0, len(qids), 150):
+            values = " ".join("wd:" + q for q in qids[i:i + 150])
+            try:
+                rows = sparql(f"SELECT ?p ?r WHERE {{ VALUES ?p {{ {values} }} ?p wdt:P131* ?r . {test} }}")
+            except Exception as e:
+                log(f"  regions skipped: {e}")
+                continue
+            for r in rows:
+                out.setdefault(r["p"], r["r"])
+    return out
+
+
+REGION_PREFIX = re.compile(r"^(province of|provincia de|provincia di|province de|prov[ií]ncia de|"
+                           r"prov[ií]ncia d'|state of|regi[oó]n de|region of)\s+", re.I)
+REGION_ALIASES = {"ES": {"Gerona": "Girona", "Lérida": "Lleida", "Vizcaya": "Bizkaia",
+                         "Guipúzcoa": "Gipuzkoa", "Orense": "Ourense", "La Coruña": "A Coruña",
+                         "Baleares": "Illes Balears", "Islas Baleares": "Illes Balears",
+                         "Álava": "Álava", "Araba": "Álava", "Castellón de la Plana": "Castellón"}}
+
+
+def clean_region(name, cc):
+    """One spelling per region: no "Province of", the official local name."""
+    name = REGION_PREFIX.sub("", name or "").strip()
+    name = name[:1].upper() + name[1:]
+    return REGION_ALIASES.get(cc, {}).get(name, name)
+
+
+def add_regions(entries, countries):
+    """Fill "region" from the place QIDs kept in "place_qid"."""
+    places = {e["place_qid"]: e["cc"] for e in entries if e.get("place_qid") and not e.get("region")}
+    if not places:
+        return
+    log(f"  Regions of {len(places)} places...")
+    region_qid = regions_of(places, countries)
+    langs = {l for e in entries for l in countries[e["cc"]]["langs"]}
+    labels = wikidata_labels(set(region_qid.values()), langs)
+    for e in entries:
+        q = region_qid.get(e.get("place_qid"))
+        if q and not e.get("region"):
+            e["region"] = pick_label(labels.get(q, {}), countries[e["cc"]]["langs"])
+    for e in entries:
+        if e.get("region"):
+            e["region"] = clean_region(e["region"], e["cc"])
+
+
+#
 # Source 1: Wikidata
 #
 
 def from_wikidata(countries, only=None):
     log("Stations (Wikidata)...")
     rows = sparql(f"""
-SELECT ?st ?f ?c ?loc ?city ?hq WHERE {{
+SELECT ?st ?f ?c ?loc ?lic ?city ?hq WHERE {{
   ?st p:P2144 ?fs ; wdt:P17 ?c .
   ?fs psv:P2144 ?v . ?v wikibase:quantityUnit wd:Q732707 ; wikibase:quantityAmount ?f .
   FILTER(?f >= {FM_MIN} && ?f <= {FM_MAX})
   FILTER NOT EXISTS {{ ?st wdt:P576 ?closed }}
   OPTIONAL {{ ?fs pq:P276|pq:P131|pq:P1001 ?loc }}
+  OPTIONAL {{ ?st wdt:P1408 ?lic }}
   OPTIONAL {{ ?st wdt:P131 ?city }}
   OPTIONAL {{ ?st wdt:P159 ?hq }}
 }}""")
@@ -334,7 +402,8 @@ SELECT ?st ?f ?c ?loc ?city ?hq WHERE {{
         key = (r["st"], round(float(r["f"]), 2), r.get("loc", ""))
         e = entries.setdefault(key, {"cc": country["code"], "qid": r["st"],
                                      "f": round(float(r["f"]), 2), "place": None})
-        e["place"] = e["place"] or r.get("loc") or r.get("city") or r.get("hq")
+        # Transmitter location, then city of license, then the admin area
+        e["place"] = e["place"] or r.get("loc") or r.get("lic") or r.get("city") or r.get("hq")
     log(f"  {len(entries)} frequencies")
     langs = {l for e in entries.values() for l in countries[e["cc"]]["langs"]}
     labels = wikidata_labels([e["qid"] for e in entries.values()] +
@@ -349,7 +418,8 @@ SELECT ?st ?f ?c ?loc ?city ?hq WHERE {{
         place = labels.get(e["place"], {}) if e["place"] else {}
         city = pick_label(place, country["langs"], prefer_native=True)
         out.append({"cc": e["cc"], "f": e["f"], "name": name, "name_en": st.get("en", ""),
-                    "city": city, "city_en": place.get("en", ""), "ps": "", "src": "Wikidata"})
+                    "city": city, "city_en": place.get("en", ""), "ps": "", "src": "Wikidata",
+                    "place_qid": e["place"]})
     log(f"  {len(out)} named stations")
     return out
 
@@ -680,6 +750,7 @@ def from_wikipedia(countries, only=None, categories=True):
         elif local and norm_key(local)[:4] == norm_key(r["city"])[:4]:
             r["city"] = local
         r.setdefault("city_en", "")
+        r["place_qid"] = qid
         r["name_en"] = r["name"] if r["host"].startswith("en.") else ""
         del r["link"], r["host"]
     log(f"  {len(out)} stations")
@@ -725,6 +796,14 @@ def from_fcc():
 #
 
 REMER_URL = "https://08pc10.es/08vdmr/vdmr08/vdm027fm{:02d}.htm"
+REMER_PROVINCES = [
+    "Álava", "Albacete", "Alicante", "Almería", "Ávila", "Badajoz", "Illes Balears", "Barcelona",
+    "Burgos", "Cáceres", "Cádiz", "Castellón", "Ciudad Real", "Córdoba", "A Coruña", "Cuenca",
+    "Girona", "Granada", "Guadalajara", "Gipuzkoa", "Huelva", "Huesca", "Jaén", "León", "Lleida",
+    "La Rioja", "Lugo", "Madrid", "Málaga", "Murcia", "Navarra", "Ourense", "Asturias", "Palencia",
+    "Las Palmas", "Pontevedra", "Salamanca", "Santa Cruz de Tenerife", "Cantabria", "Segovia",
+    "Sevilla", "Soria", "Tarragona", "Teruel", "Toledo", "Valencia", "Valladolid", "Bizkaia",
+    "Zamora", "Zaragoza", "Ceuta", "Melilla"]
 REMER_NETWORKS = {"SER": "Cadena SER", "RNE": "RNE", "COPE": "COPE", "OC": "Onda Cero",
                   "CCAA": "Regional radio", "PRI": "Local station", "MUN": "Municipal radio",
                   "CAD100": "Cadena 100", "40P": "LOS40", "DIAL": "Cadena Dial"}
@@ -781,7 +860,8 @@ def from_remer():
                     name = REMER_NETWORKS.get(network, network.title() or "Local station")
                 for f in freqs:
                     out.append({"cc": "ES", "f": f, "name": name, "name_en": "", "city": city,
-                                "city_en": "", "ps": "", "src": "REMER vademecum (DGPCE, Spain)"})
+                                "city_en": "", "ps": "", "region": REMER_PROVINCES[n - 1],
+                                "src": "REMER vademecum (DGPCE, Spain)"})
     # The pages lost their accented letters, put the official spelling back
     official = spanish_municipalities()
     fixed = 0
@@ -854,7 +934,7 @@ def from_manual():
             out.append({"cc": cc, "f": round(float(s["f"]), 2), "name": s["name"],
                         "name_en": s.get("name_en", ""), "city": s.get("city", ""),
                         "city_en": s.get("city_en", ""), "ps": s.get("ps", ""),
-                        "src": "Manual", "manual": True})
+                        "region": s.get("region", ""), "src": "Manual", "manual": True})
     log(f"Stations (manual): {len(out)}")
     return out
 
@@ -915,6 +995,12 @@ def write(countries, entries, partial=False):
             ps = to_ascii(e.get("ps", ""))[:PS_LEN]
             if ps:
                 s["p"] = ps
+            region = e.get("region") or ""
+            r = to_ascii(region)[:REGION_LEN].strip()
+            if r:
+                s["r"] = r
+                if region != r:
+                    s["region"] = region
             if e["name"] != n:
                 s["name"] = e["name"]
             if e["city"] != c:
@@ -969,7 +1055,9 @@ def main():
     entries += from_manual()
     if only:
         entries = [e for e in entries if e["cc"] in only]
-    write(countries, merge(entries), partial=bool(only))
+    entries = merge(entries)
+    add_regions(entries, countries)
+    write(countries, entries, partial=bool(only))
 
 
 if __name__ == "__main__":
