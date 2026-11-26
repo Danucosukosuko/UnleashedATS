@@ -9,6 +9,8 @@
 #include <WiFi.h>
 #include <LittleFS.h>
 #include <FS.h>
+#include <stdarg.h>
+#include <esp_heap_caps.h>
 
 #define STATIONS_DIR        "/stations"
 #define STATIONS_TEMP       "/stations/download.tmp"
@@ -87,6 +89,24 @@ static String filePath(const char *code)
 // Network access
 //
 
+//
+// Diagnostics on the USB serial port, when it is in ad hoc mode
+//
+static void stationsLog(const char *format, ...)
+{
+  if(usbModeIdx == USB_OFF) return;
+
+  char line[200];
+  va_list args;
+  va_start(args, format);
+  vsnprintf(line, sizeof(line), format, args);
+  va_end(args);
+
+  Serial.printf("#STN %lu rssi=%d heap=%u/%u %s\r\n", millis(), WiFi.RSSI(),
+    (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+    (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL), line);
+}
+
 enum ConnectResult { CONNECT_OK, CONNECT_RETRY, CONNECT_FATAL };
 
 // Start a request, from the given offset when resuming
@@ -122,7 +142,10 @@ static ConnectResult stationsConnect(HTTPClient &http, NetworkClientSecure &clie
     http.addHeader("Range", range);
   }
 
+  uint32_t started = millis();
   *code = http.GET();
+  stationsLog("GET offset=%u code=%d size=%d in %lu ms", (unsigned)offset, *code, http.getSize(),
+              (unsigned long)(millis() - started));
   if(*code == HTTP_CODE_OK || (offset && *code == HTTP_CODE_PARTIAL_CONTENT))
   {
     http.getStreamPtr()->setTimeout(STATIONS_STALL);
@@ -190,7 +213,9 @@ static char *stationsFetch(const String &url, const char *label, size_t *size)
       }
     }
 
-    Stream *stream = http.getStreamPtr();
+    NetworkClient *stream = http.getStreamPtr();
+    uint32_t chunkTime = millis();
+    size_t logged = got;
     while(got < total)
     {
       if(consumeAbortPending())
@@ -201,9 +226,34 @@ static char *stationsFetch(const String &url, const char *label, size_t *size)
         return(nullptr);
       }
 
-      size_t count = stream->readBytes(buf + got, min((size_t)STATIONS_CHUNK, total - got));
-      if(!count) break;
+      // The TLS client does not wait for data: an empty read only means
+      // that the next record has not arrived yet
+      int ready = stream->available();
+      if(ready <= 0)
+      {
+        if(millis() - chunkTime > STATIONS_STALL || (!client.connected() && !stream->available()))
+        {
+          stationsLog("stall at %u of %u after %lu ms, connected=%d", (unsigned)got,
+                      (unsigned)total, (unsigned long)(millis() - chunkTime), client.connected());
+          break;
+        }
+        delay(5);
+        continue;
+      }
+
+      int count = stream->read((uint8_t *)buf + got, min((size_t)ready, min((size_t)STATIONS_CHUNK, total - got)));
+      if(count <= 0)
+      {
+        delay(5);
+        continue;
+      }
       got += count;
+      chunkTime = millis();
+      if(got - logged >= 16384)
+      {
+        stationsLog("got %u of %u", (unsigned)got, (unsigned)total);
+        logged = got;
+      }
 
       if(millis() - lastDraw > 500)
       {
@@ -217,6 +267,7 @@ static char *stationsFetch(const String &url, const char *label, size_t *size)
 
     if(got >= total)
     {
+      stationsLog("complete, %u bytes", (unsigned)total);
       buf[total] = '\0';
       *size = total;
       return(buf);
