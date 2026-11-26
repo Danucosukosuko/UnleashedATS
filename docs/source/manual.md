@@ -4,7 +4,7 @@
 
 ![](_static/screenshot-main.png)
 
-* **RSSI meter** (top left corner), also serves as a mono/stereo indicator in FM mode (one/two rows).
+* **RSSI meter** (top left corner), also serves as a mono/stereo indicator in FM mode (one/two rows). The single mark ahead of the bar is the peak hold, which stays for a moment and then slides back down.
 * **Settings save icon** (right after the RSSI meter). The settings are saved to non-volatile memory after 10 seconds of inactivity.
 * **Bluetooth icon** (right after the save icon). Different colors indicate the connection status.
 * **Wi-Fi icon** (top right area near the battery). Different colors indicate the connection status.
@@ -56,9 +56,14 @@ The menu can be invoked by clicking the encoder button and is closed automatical
 * **Volume** - 0 (silent) ... 63 (max). The headphone volume level can be low (compared to the built-in speaker) due to limitation of the initial hardware design. Use short press to mute/unmute.
 * **VFO A/B** - Click to switch between two tuning slots, or short press (>0.5 sec) to copy the active slot into the inactive slot without switching. Both actions return to tuning. Each slot remembers its frequency (including SSB fine tuning), band, mode, step, and bandwidth. Tuning and memory recall affect only the active slot; other settings and memory slots are shared. Both slots and the active selection are saved after 10 seconds of inactivity. Initially, both slots contain the current tuning position.
 * **Step** - Tuning step (not every step is available on every band and mode).
-* **Seek** - Seek up or down on AM/FM, normal tuning on LSB/USB (hardware seek function is not supported by SI4732 on SSB). Rotate or click the encoder to stop the seek. Use short press to switch between the seek and [schedule](#schedule) modes. Use press and rotate for manual fine tuning.
+* **Seek** - Seek up or down on AM/FM, normal tuning on LSB/USB (hardware seek function is not supported by SI4732 on SSB). Rotate or click the encoder to stop the seek. Use short press to switch between the seek, [schedule](#schedule) and auto modes. Use press and rotate for manual fine tuning. In the auto mode (marked "Auto"), rotating the encoder erases every memory slot and fills it again from a sweep of the current band.
 * **Scan** - Scan a frequency range and plot the RSSI (S) and SNR (N) graphs (unfortunately, these metrics are almost meaningless in SSB modes due to SI4732 patch limitations). Both graphs are normalized to 0.0 - 1.0 range. While the Scan mode is active, short press the encoder for 0.5 seconds to rescan. To abort a running scan process click or rotate the encoder.
 * **Memory** - 99 slots to store favorite frequencies. Named slots show their name instead of the frequency and mode in the menu. A matching name also appears below the tuned frequency; a received RDS station name takes priority. Short press (>0.5 sec) on an empty slot to store the current frequency, short press to erase a slot, switch between stored slots by rotating the encoder, click to exit the menu. Edit memory slots using the receiver's **Memory** page over [Wi-Fi](#wi-fi) or via [remote control](remote.md). For older firmware, use the [legacy USB memory editor](memory.md).
+* **Mem Scan** - Hop through the occupied memory slots, passing over the quiet ones and staying on an active channel as long as it carries a signal. Click to stop on the current channel, rotate to stop and take over the tuning.
+* **Auto Store** - Sweep the current band and store the stations found into the memory slots, named after their RDS name. **Add New** fills the free slots, **Replace** drops the stations of the current band first, **Back** leaves without sweeping. FM and AM only. Click to cut a sweep short.
+* **Stations** - Browse the FM station list downloaded with *Settings → Load Stations*. Pick the country, then rotate through its stations to tune them; each one shows its expected RDS name or its name, and the title shows its municipality. Short press on the country deletes the list. **Back** goes up one level.
+* **RDS AF** - Alternative frequencies of the station, the one being received marked with `>`. Click a frequency to tune it; the encoder then moves between them, tuning as it goes, until you click again. **Back** leaves the menu.
+* **RDS EON** - Other networks announced by the station (Enhanced Other Networks), by name or PI code. Click one to see its frequencies, then click a frequency to tune it as in **RDS AF**.
 * **Squelch** - mute the speaker when the selected RSSI (dBuV) or SNR (dB) level is lower than the defined threshold. The setting is saved separately for each mode (FM, LSB, USB, AM). When Off, short press the encoder button to switch between RSSI and SNR. When enabled, short press turns squelch Off. Unlikely to work in SSB mode.
 * **Bandwidth** - Selects the bandwidth of the channel filter.
 * **AGC/ATTN** - Automatic Gain Control (on/off) or Attenuation level. The attenuator is not applicable to SSB mode.
@@ -79,13 +84,15 @@ The menu can be invoked by clicking the encoder button and is closed automatical
 * **Zoom Menu** - Display the currently selected menu item using a larger font (accessibility option).
 * **Scroll Dir.** - Menu scroll direction for clockwise encoder turn.
 * **Enc. Accel.** - Increase tuning and adjustment speed when turning the encoder quickly (On by default). Disable for a constant step per click.
-* **RDS** - Radio Data System options: PS - radio station name, CT - date and time, RT - text, PTY - genre, ALL (EU/US) - everything, OFF - turn RDS off. RDS CT should contain UTC date and time, but some stations incorrectly transmit local or completely bogus values. The clock is synchronized from RDS only once. To synchronize it again, disable and re-enable RDS CT or switch the receiver off and on.
+* **RDS** - Radio Data System options: PS - radio station name, CT - date and time, RT - text, PTY - genre, ALL (EU/US) - everything, OFF - turn RDS off, ALL+AF (EU/US) - everything, and follow the station to a stronger alternative frequency of the same programme when the reception fades. The TP, AF and EON labels next to the frequency show which of these services the station carries. RDS CT should contain UTC date and time, but some stations incorrectly transmit local or completely bogus values. The clock is synchronized from RDS only once. To synchronize it again, disable and re-enable RDS CT or switch the receiver off and on.
 * **FM Stereo** - **Auto** lets the receiver blend down to mono on its own as the signal gets worse, **Mono** forces mono audio, trading the stereo image for less hiss on a weak station.
+* **DX Mode** - Weak signal listening. **On** turns off the soft mute that lowers the volume of weak stations, makes the audio blend to mono earlier on FM, and lowers the seek, Auto Store and Mem Scan thresholds, on FM, MW, LW and SW.
 * **FM Region** - FM de-emphasis time constant by region (50µs for EU/JP/AU and 75µs for the US).
 * **Capacitor** - Automatically adjusts the antenna tuning capacitor on MW1, MW2, MW3, and 160 m bands. Off by default; only works on receivers without a Hi-Z input circuit.
 * **Calibration** - SSB calibration offset (-2000...2000, per mode/band).
 * **DSP Patches** - Select **Default** or an uploaded AM/SSB patch set. Manage these experimental patches on the web interface's **Patches** page.
 * **Load EiBi** - download the EiBi [schedule](#schedule) (requires Wi-Fi internet connection).
+* **Load Stations** - download the FM station list of a country (requires Wi-Fi internet connection and a set clock). Pick the region, then the country; countries already on the receiver are marked with `*`. A new country replaces the previous one. Listed stations are named on screen when they send no RDS.
 * **Update FW** - **Check** shows the available firmware version; **Update** installs it (requires a Wi-Fi internet connection). See [updating over Wi-Fi](flash.md#update-over-wi-fi).
 * **USB Port** - USB serial mode: Off (default), [Ad hoc](remote.md#ad-hoc-protocol), or [CAT TS-480](remote.md#kenwood-cat-protocol). The selected protocol accepts [remote control](remote.md) commands over the USB serial port.
 * **TCP Port** - TCP control mode: Off (default), [Ad hoc](remote.md#ad-hoc-protocol), or [CAT TS-480](remote.md#kenwood-cat-protocol). One client can use the selected [remote control](remote.md#tcp-over-wi-fi) protocol over Wi-Fi on port 60000. Wi-Fi must be enabled separately.
@@ -134,6 +141,8 @@ The `Config` page lets you set the UTC date/time manually or from the browser, a
 Wi-Fi and Bluetooth LE TX power can be changed only on the `Config` page, under Power. The defaults are 17 dBm for Wi-Fi and 0 dBm for Bluetooth LE. Changes apply immediately and are saved across restarts. Lower power reduces range and may disconnect remote controls or the web interface.
 
 The `Wi-Fi` page lets you select the Wi-Fi mode, configure up to three access points the receiver will try to connect to and add optional login and password to protect the memory, settings, Wi-Fi, and firmware update pages. Enable `Scan Hidden SSIDs` only if one of the configured access points does not broadcast its network name; leaving it off makes Wi-Fi connection faster. Changing Wi-Fi mode may disconnect the browser; Off and Sync Only disable the web interface.
+
+The `Remote` page (`/remote`) is an FM-DX style control panel: frequency, signal history, RDS PS, PI, PTY and RadioText, the AF and EON lists, band buttons, seek and step, presets kept in the browser and an RDS logger. It uses the same login as the other pages. To listen to the audio over the network as well, use the [PC companion](https://github.com/Danucosukosuko/UnleashedATS-Webserver).
 
 Firmware updates are available through **Settings → Update FW** or the web interface's **Update** page. See [updating over Wi-Fi](flash.md#update-over-wi-fi) for instructions.
 

@@ -9,7 +9,7 @@ Before proceeding, please check whether the receiver board has [BOOT & RESET but
 ## Firmware files
 
 ```{hint}
-The firmware releases are available on [GitHub](https://github.com/esp32-si4732/ats-mini/releases). You'll need either OSPI or QSPI variant depending on the ESP32-S3 PSRAM type, see the following table:
+UnleashedATS releases are available on [GitHub](https://github.com/Danucosukosuko/UnleashedATS/releases), named `UnleashedATS-v<CFW version>-<ATS-Mini version>-<variant>`. You'll need either OSPI or QSPI variant depending on the ESP32-S3 PSRAM type, see the following table:
 
 ![](_static/esp32-psram-variants.png)
 

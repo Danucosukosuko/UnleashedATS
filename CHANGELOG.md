@@ -1,8 +1,33 @@
 # Changelog
 
-The user manual is available at <https://esp32-si4732.github.io/ats-mini/manual.html>. The firmware flashing instructions are available at <https://esp32-si4732.github.io/ats-mini/flash.html>
+UnleashedATS releases are named `v<CFW version>-<ATS-Mini version>`. The user manual is available at <https://danucosukosuko.github.io/UnleashedATS/manual.html>. The firmware flashing instructions are available at <https://danucosukosuko.github.io/UnleashedATS/flash.html>
 
 <!-- towncrier release notes start -->
+
+## 1.00-2.46 (2026-11-26)
+
+First UnleashedATS release, based on ATS-Mini v2.46 and the changes merged after it.
+
+### Added
+
+- **RDS AF** menu: the alternative frequencies of the station, with the current one marked. Click one to tune it and let the encoder move between them; **Back** leaves the menu.
+- **RDS EON** menu: the other networks announced by the station, with their names and frequencies, ready to tune.
+- `ALL+AF (EU)` and `ALL+AF (US)` RDS modes, which move to a stronger frequency of the same programme when the reception fades.
+- TP, AF and EON indicators next to the frequency.
+- FM station lists by country: *Settings → Load Stations* downloads the list of a country (replacing the previous one), *Menu → Stations* browses it, and listed stations are named on screen when there is no RDS.
+- **Auto Store** sweeps the band and stores the stations found, named after their RDS name. **Add New** fills the free slots, **Replace** drops the stations of the band first.
+- **Mem Scan** hops through the memories, skipping the quiet ones and holding on an active channel.
+- **Seek Auto** mode, which rebuilds the memories from a full sweep of the band.
+- **DX Mode** setting: no soft mute on weak stations, earlier blend to mono on FM and more sensitive seek, on FM, MW, LW and SW.
+- Peak hold marker on both S-meters.
+- FM-DX style remote control page at `/remote`, with signal history, RDS, AF and EON lists, presets and an RDS logger.
+- USB ad hoc commands: `J` JSON status monitor, `G`/`g` seek, `X` DX Mode, `Z` mono. `F` now switches bands when needed.
+- Welcome screen after the firmware is flashed or updated.
+
+### Changed
+
+- *Settings → Update FW* installs UnleashedATS releases from <https://github.com/Danucosukosuko/UnleashedATS>.
+- UnleashedATS is released under the GNU GPLv3. The MIT notice of the ATS-Mini code is kept in `LICENSE-ATS-Mini`.
 
 ## 2.46 (2026-11-18)
 

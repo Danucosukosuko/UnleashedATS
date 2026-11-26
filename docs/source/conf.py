@@ -6,9 +6,9 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'ATS Mini'
-copyright = '2025, ATS Mini Community'
-author = 'ATS Mini Community'
+project = 'UnleashedATS'
+copyright = '2025, ATS Mini Community; 2026, UnleashedATS'
+author = 'ATS Mini Community, Danucosukosuko'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

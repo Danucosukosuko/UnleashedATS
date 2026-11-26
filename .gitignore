@@ -16,3 +16,6 @@ __pycache__/
 
 # Project
 build/
+
+# Station list generator cache
+tools/stations/.cache/

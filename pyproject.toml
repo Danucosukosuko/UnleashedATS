@@ -16,13 +16,13 @@ dependencies = [
 required-version = ">=0.6.8"
 
 [tool.towncrier]
-name = "ATS Mini"
+name = "UnleashedATS"
 filename = "CHANGELOG.md"
 template = "changelog/.template.jinja"
 directory = "changelog/"
 underlines = ["", "", ""]
 title_format = "## {version} ({project_date})"
-issue_format = "[#{issue}](https://github.com/esp32-si4732/ats-mini/issues/{issue})"
+issue_format = "[#{issue}](https://github.com/Danucosukosuko/UnleashedATS/issues/{issue})"
 
 [[tool.towncrier.type]]
 directory = "removed"
