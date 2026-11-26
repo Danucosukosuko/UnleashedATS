@@ -20,8 +20,8 @@ UnleashedATS is a custom firmware with an open door. Features that the [official
 
 ## Station lists
 
-Station corrections and additions go in `tools/stations/manual/<CC>.json`, see [stations/README.md](stations/README.md).
+Station corrections and additions go in `tools/stations/manual/<CC>.json`, see [stations/README.md](https://github.com/Danucosukosuko/UnleashedATS/blob/main/stations/README.md).
 
 ## Development
 
-Read [docs/source/development.md](docs/source/development.md) for the build setup. After editing `ats-mini/web/remote.html`, run `python tools/embed_web.py`.
+Read [the development guide](https://danucosukosuko.github.io/UnleashedATS/development.html) for the build setup. After editing `ats-mini/web/remote.html`, run `python tools/embed_web.py`.
