@@ -17,7 +17,10 @@
 #define STATIONS_MAX_INDEX 300   // Countries in the downloaded index
 #define STATIONS_MAX_REGIONS 10  // Regions in the downloaded index
 #define STATIONS_MAX_MATCH  12   // Stations listed on one frequency
-#define STATIONS_TIMEOUT 15000   // Network timeout (msecs)
+#define STATIONS_TIMEOUT 15000   // Connection timeout (msecs)
+#define STATIONS_STALL    8000   // A download this long without data is resumed (msecs)
+#define STATIONS_RETRIES     6   // Times a broken download is resumed
+#define STATIONS_CHUNK    4096   // Bytes read from the network at a time
 #define STATIONS_CYCLE       2   // Identification calls per listed name
 
 typedef struct __attribute__((packed))
@@ -84,54 +87,174 @@ static String filePath(const char *code)
 // Network access
 //
 
-static bool stationsConnect(HTTPClient &http, NetworkClientSecure &client, const String &url)
+enum ConnectResult { CONNECT_OK, CONNECT_RETRY, CONNECT_FATAL };
+
+// Start a request, from the given offset when resuming
+static ConnectResult stationsConnect(HTTPClient &http, NetworkClientSecure &client, const String &url,
+                                     size_t offset, int *code)
 {
   if(WiFi.status() != WL_CONNECTED)
   {
     statusShow("Station lists", "Connect Wi-Fi first.");
-    return(false);
+    return(CONNECT_FATAL);
   }
 
   // Certificates cannot be checked without the date
   if(!clockGetDate(nullptr, nullptr, nullptr, nullptr))
   {
     statusShow("Station lists", "Set the clock first.");
-    return(false);
+    return(CONNECT_FATAL);
   }
 
   client.setCACertBundle(caBundleStart, caBundleEnd - caBundleStart);
   client.setHandshakeTimeout(STATIONS_TIMEOUT / 1000);
   http.setConnectTimeout(STATIONS_TIMEOUT);
-  http.setTimeout(STATIONS_TIMEOUT);
+  http.setTimeout(STATIONS_STALL);
   http.setUserAgent(getUserAgent());
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   http.useHTTP10(true);
 
-  if(!http.begin(client, url) || http.GET() != HTTP_CODE_OK)
+  if(!http.begin(client, url)) return(CONNECT_RETRY);
+  if(offset)
   {
-    statusShow("Station lists", "Download failed.");
-    http.end();
-    return(false);
+    char range[32];
+    snprintf(range, sizeof(range), "bytes=%u-", (unsigned)offset);
+    http.addHeader("Range", range);
   }
 
-  http.getStreamPtr()->setTimeout(STATIONS_TIMEOUT);
-  return(true);
+  *code = http.GET();
+  if(*code == HTTP_CODE_OK || (offset && *code == HTTP_CODE_PARTIAL_CONTENT))
+  {
+    http.getStreamPtr()->setTimeout(STATIONS_STALL);
+    return(CONNECT_OK);
+  }
+
+  http.end();
+  // A missing file will not appear by trying again
+  return(*code == HTTP_CODE_NOT_FOUND? CONNECT_FATAL : CONNECT_RETRY);
 }
+
+//
+// Download a whole file into PSRAM, resuming where it stopped when the
+// connection stalls or breaks. Returns a terminated buffer to free().
+//
+static char *stationsFetch(const String &url, const char *label, size_t *size)
+{
+  static const char *title = "Station lists";
+  NetworkClientSecure client;
+  HTTPClient http;
+  char status[64];
+  char *buf = nullptr;
+  size_t total = 0, got = 0;
+  uint32_t lastDraw = 0;
+
+  for(int attempt=0 ; attempt<=STATIONS_RETRIES ; attempt++)
+  {
+    if(attempt)
+    {
+      snprintf(status, sizeof(status), "%s: resuming (%d)...", label, attempt);
+      statusShow(title, status, 0);
+      drawScreen();
+      delay(1000);
+    }
+
+    int code = 0;
+    ConnectResult result = stationsConnect(http, client, url, got, &code);
+    if(result == CONNECT_FATAL)
+    {
+      if(code == HTTP_CODE_NOT_FOUND) statusShow(title, "List not found.");
+      free(buf);
+      return(nullptr);
+    }
+    if(result == CONNECT_RETRY) continue;
+
+    // A server that ignores the range sends everything again
+    if(code == HTTP_CODE_OK) got = 0;
+
+    if(!buf)
+    {
+      int length = http.getSize();
+      if(length <= 0)
+      {
+        http.end();
+        statusShow(title, "Unknown list size.");
+        return(nullptr);
+      }
+      total = length;
+      buf = static_cast<char *>(ps_malloc(total + 1));
+      if(!buf)
+      {
+        http.end();
+        statusShow(title, "Not enough memory.");
+        return(nullptr);
+      }
+    }
+
+    Stream *stream = http.getStreamPtr();
+    while(got < total)
+    {
+      if(consumeAbortPending())
+      {
+        http.end();
+        free(buf);
+        statusShow(title, "CANCELED!");
+        return(nullptr);
+      }
+
+      size_t count = stream->readBytes(buf + got, min((size_t)STATIONS_CHUNK, total - got));
+      if(!count) break;
+      got += count;
+
+      if(millis() - lastDraw > 500)
+      {
+        snprintf(status, sizeof(status), "%s: %u of %u KB", label, (unsigned)(got / 1024), (unsigned)(total / 1024));
+        statusShow(title, status, 0);
+        drawScreen();
+        lastDraw = millis();
+      }
+    }
+    http.end();
+
+    if(got >= total)
+    {
+      buf[total] = '\0';
+      *size = total;
+      return(buf);
+    }
+  }
+
+  free(buf);
+  statusShow(title, "Download interrupted.");
+  return(nullptr);
+}
+
+// Lets ArduinoJson and the Stream helpers walk a buffer in memory
+class MemoryStream : public Stream
+{
+  const char *data;
+  size_t size, pos = 0;
+
+  public:
+    MemoryStream(const char *data, size_t size) : data(data), size(size) { setTimeout(0); }
+    int available() override { return(size - pos); }
+    int read() override { return(pos < size? (uint8_t)data[pos++] : -1); }
+    int peek() override { return(pos < size? (uint8_t)data[pos] : -1); }
+    size_t write(uint8_t) override { return(0); }
+};
 
 bool stationsLoadIndex()
 {
-  NetworkClientSecure client;
-  HTTPClient http;
-
   consumeAbortPending();
   statusShow("Station lists", "Loading countries...", 0);
   drawScreen();
 
-  if(!stationsConnect(http, client, STATIONS_URL "/index.json")) return(false);
+  size_t size;
+  char *json = stationsFetch(STATIONS_URL "/index.json", "Countries", &size);
+  if(!json) return(false);
 
   JsonDocument doc(&spiRamAllocator);
-  DeserializationError error = deserializeJson(doc, *http.getStreamPtr());
-  http.end();
+  DeserializationError error = deserializeJson(doc, json, size);
+  free(json);
 
   if(error)
   {
@@ -267,8 +390,6 @@ bool stationsLocalDelete(int idx)
 bool stationsDownload(const StationCountry *country)
 {
   static const char *title = "Station lists";
-  NetworkClientSecure client;
-  HTTPClient http;
   char status[64];
 
   if(!country) return(false);
@@ -294,12 +415,15 @@ bool stationsDownload(const StationCountry *country)
   }
 
   char code2[3] = { country->code[0], country->code[1], '\0' };
-  if(!stationsConnect(http, client, String(STATIONS_URL "/") + code2 + ".json")) return(false);
+  size_t size;
+  char *json = stationsFetch(String(STATIONS_URL "/") + code2 + ".json", country->name, &size);
+  if(!json) return(false);
 
-  Stream *stream = http.getStreamPtr();
+  MemoryStream memory(json, size);
+  Stream *stream = &memory;
   if(!stream->find("\"stations\"") || !stream->find("["))
   {
-    http.end();
+    free(json);
     statusShow(title, "Damaged station list.");
     return(false);
   }
@@ -308,7 +432,7 @@ bool stationsDownload(const StationCountry *country)
   fs::File file = LittleFS.open(STATIONS_TEMP, "w");
   if(!file)
   {
-    http.end();
+    free(json);
     statusShow(title, "Failed opening local storage!");
     return(false);
   }
@@ -338,10 +462,12 @@ bool stationsDownload(const StationCountry *country)
       break;
     }
 
-    if(deserializeJson(doc, *stream, DeserializationOption::Filter(filter)))
+    DeserializationError error = deserializeJson(doc, *stream, DeserializationOption::Filter(filter));
+    if(error)
     {
       ok = false;
-      statusShow(title, "Download interrupted.");
+      snprintf(status, sizeof(status), "Damaged list at station %u: %s", count + 1, error.c_str());
+      statusShow(title, status);
       break;
     }
 
@@ -363,14 +489,14 @@ bool stationsDownload(const StationCountry *country)
 
     if(!(++count & 63))
     {
-      snprintf(status, sizeof(status), "... %s: %u stations ...", country->name, count);
+      snprintf(status, sizeof(status), "%s: %u stations stored", country->name, count);
       statusShow(title, status, 0);
       drawScreen();
     }
   }
   while(stream->findUntil(",", "]"));
 
-  http.end();
+  free(json);
 
   if(ok)
   {
