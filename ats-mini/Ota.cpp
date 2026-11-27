@@ -75,6 +75,7 @@ static OtaState ota;
 
 // Tag of the latest release, as "v<CFW version>-<ATS-Mini version>"
 static char otaLatestTag[16] = "";
+static bool otaReinstall = false;
 
 static bool otaFail(const char *error)
 {
@@ -216,6 +217,12 @@ static void otaDrawProgress()
   drawScreen();
 }
 
+bool otaRequestReinstall()
+{
+  otaReinstall = true;
+  return otaRequestLatest(true);
+}
+
 bool otaRequestLatest(bool install)
 {
   if(ota.busy.exchange(true)) return false;
@@ -270,7 +277,8 @@ static bool otaDownloadLatest(bool install)
   unsigned version = major * 100 + minor;
   ota.latestVersion = version;
   strcpy(otaLatestTag, tag.c_str());
-  const bool newer = version > VER_CFW;
+  const bool newer = version > VER_CFW || otaReinstall;
+  otaReinstall = false;
   if(!newer || !install)
   {
     ota.phase = newer? OTA_AVAILABLE : OTA_CURRENT;

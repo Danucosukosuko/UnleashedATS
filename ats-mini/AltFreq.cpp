@@ -35,6 +35,10 @@ static bool listShown    = false;     // Lists belong to the station on the air
 static bool trafficProgram = false;   // TP flag of the station
 static bool trafficAnnounce = false;  // TA flag of the station
 
+static uint32_t statGroups = 0;      // RDS groups decoded
+static uint32_t statBad = 0;         // RDS groups with uncorrected errors
+static uint32_t statTypes[32];       // RDS groups per type and version
+
 static uint32_t afBadTime   = 0;      // Time the reception went bad, or zero
 static uint32_t afTriedTime = 0;      // Time of the last attempt
 
@@ -114,9 +118,24 @@ static EonNetwork *findNetwork(uint16_t pi)
 //
 // Decode the frequency related parts of the RDS group just read
 //
+void rdsStats(uint32_t *groups, uint32_t *bad, const uint32_t **types)
+{
+  *groups = statGroups;
+  *bad = statBad;
+  *types = statTypes;
+}
+
 void rdsExtraGroup()
 {
-  if(!rx.getNumRdsFifoUsed() || !rx.getRdsBlocksReliable()) return;
+  if(!rx.getNumRdsFifoUsed()) return;
+
+  statGroups++;
+  statTypes[(rx.getRdsBlock(1) >> 11) & 0x1F]++;
+  if(!rx.getRdsBlocksReliable())
+  {
+    statBad++;
+    return;
+  }
 
   uint16_t pi = rx.getRdsPI();
   if(!pi) return;

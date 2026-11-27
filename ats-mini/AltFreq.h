@@ -39,6 +39,9 @@ bool eonPresent();
 bool rdsTrafficProgram();
 bool rdsTrafficAnnouncement();
 
+// Groups decoded, groups with errors, and groups per type (type * 2 + B)
+void rdsStats(uint32_t *groups, uint32_t *bad, const uint32_t **types);
+
 // Tune to one of the alternative frequencies, keeping the station info
 bool afTune(uint32_t freq);
 // Follow the station to an alternative frequency once the reception

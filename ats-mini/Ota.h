@@ -24,6 +24,8 @@ void otaEndUpload();
 OtaStatus otaStatus();
 
 bool otaRequestLatest(bool install);
+// Install the latest release even when it is the version already running
+bool otaRequestReinstall();
 void otaTick();
 
 #endif

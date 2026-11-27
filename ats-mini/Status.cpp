@@ -53,6 +53,8 @@ void statusJsonWrite(Print &out, bool live)
   doc["snr"]    = curSnr;
   doc["stereo"] = currentMode==FM && fmStereoIdx!=FM_STEREO_MONO && rx.getCurrentPilot();
   doc["dx"]     = dxMode;
+  doc["batt_v"] = serialized(String(batteryMonitor(), 2));
+  doc["batt_pct"] = batteryCharging()? -1 : batteryPercent();
   doc["mono"]   = fmStereoIdx==FM_STEREO_MONO;
   // Broadcast range, as the remote page band buttons name it
   doc["range"]  = currentMode==FM? "FM" : currentFrequency<520000? "LW" :

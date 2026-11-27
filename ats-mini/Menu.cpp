@@ -14,6 +14,7 @@
 #include "Stations.h"
 #include "DxWatch.h"
 #include "Debug.h"
+#include <LittleFS.h>
 
 #include <time.h>
 
@@ -184,8 +185,9 @@ static const char *menu[] =
 #define MENU_TCPMODE      22
 #define MENU_BLEMODE      23
 #define MENU_WIFIMODE     24
-#define MENU_ABOUT        25
-#define MENU_DEBUG        26  // Only listed in debug mode
+#define MENU_BATTERY      25
+#define MENU_ABOUT        26
+#define MENU_DEBUG        27  // Only listed in debug mode
 
 
 static uint8_t updateFwIdx = 0;
@@ -220,6 +222,7 @@ static const char *settings[] =
   "TCP Port",
   "Bluetooth",
   "Wi-Fi",
+  "Battery",
   "About",
   "Debug",
 };
@@ -303,10 +306,18 @@ static inline int wrap_range(int v, int enc, int vMin, int vMax);
 // Debug menu (debug mode only)
 //
 static uint8_t aboutPresses = 0;  // Short presses on the About screen
+
+enum DebugItem
+{
+  DBG_BACK, DBG_MIN, DBG_MAX, DBG_RESET, DBG_RESET_ALL, DBG_INFO, DBG_CPU, DBG_I2C,
+  DBG_FM_SOFTMUTE, DBG_FM_SEEK_RSSI, DBG_FM_SEEK_SNR, DBG_AM_SEEK_RSSI, DBG_AM_SEEK_SNR,
+  DBG_ANTCAP, DBG_BATT_CAL, DBG_USBLOG, DBG_WELCOME, DBG_ERASE_DX, DBG_ERASE_LISTS, DBG_REINSTALL,
+  DBG_REBOOT, DBG_DOWNLOAD, DBG_OFF, DBG_COUNT
+};
+
 static int debugIdx = 1;
-static int debugEdit = 0;         // 1: editing the minimum, 2: the maximum
-static uint32_t debugValue = 0;
-static const char *const debugItems[] = { "Back", "Min", "Max", "Reset Band", "USB Log", "Debug Off" };
+static int debugEdit = 0;         // Item being edited, 0 when browsing
+static int32_t debugValue = 0;
 
 static void freqText(char *text, size_t size, uint32_t freq, bool fm)
 {
@@ -314,39 +325,138 @@ static void freqText(char *text, size_t size, uint32_t freq, bool fm)
   else snprintf(text, size, "%lu k", (unsigned long)(freq / 1000));
 }
 
+static void autoText(char *text, size_t size, const char *label, int32_t value, const char *unit = "")
+{
+  if(value==DEBUG_AUTO) snprintf(text, size, "%s Auto", label);
+  else snprintf(text, size, "%s %ld%s", label, (long)value, unit);
+}
+
+// Overridable receiver values: where they live and how far they go
+static int16_t *debugSetting(int item, int *maximum, int *minimum = nullptr)
+{
+  int unused;
+  if(!minimum) minimum = &unused;
+  *minimum = DEBUG_AUTO;
+  switch(item)
+  {
+    case DBG_BATT_CAL:     *minimum = -300; *maximum = 300; return(&batteryCalMv);
+    case DBG_FM_SOFTMUTE:  *maximum = 31;   return(&debugFmSoftMute);
+    case DBG_FM_SEEK_RSSI: *maximum = 127;  return(&debugFmSeekRssi);
+    case DBG_FM_SEEK_SNR:  *maximum = 127;  return(&debugFmSeekSnr);
+    case DBG_AM_SEEK_RSSI: *maximum = 127;  return(&debugAmSeekRssi);
+    case DBG_AM_SEEK_SNR:  *maximum = 127;  return(&debugAmSeekSnr);
+    case DBG_ANTCAP:       *maximum = 6143; return(&debugAntCap);
+    default:               return(nullptr);
+  }
+}
+
+static void debugLabel(int item, char *text, size_t size)
+{
+  bool fm = bands[bandIdx].bandMode==FM;
+  char value[16];
+  int maximum;
+
+  switch(item)
+  {
+    case DBG_MIN: freqText(value, sizeof(value), bands[bandIdx].minimumFreq, fm); snprintf(text, size, "Min %s", value); break;
+    case DBG_MAX: freqText(value, sizeof(value), bands[bandIdx].maximumFreq, fm); snprintf(text, size, "Max %s", value); break;
+    case DBG_RESET:        snprintf(text, size, "Reset Band"); break;
+    case DBG_RESET_ALL:    snprintf(text, size, "Reset All Bands"); break;
+    case DBG_INFO:         snprintf(text, size, "Live Info"); break;
+    case DBG_CPU:          snprintf(text, size, "CPU %u MHz", debugCpuMhz); break;
+    case DBG_I2C:          snprintf(text, size, "I2C %u kHz", debugI2cKhz); break;
+    case DBG_FM_SOFTMUTE:  autoText(text, size, "FM SoftMute", debugFmSoftMute, " dB"); break;
+    case DBG_FM_SEEK_RSSI: autoText(text, size, "FM Seek RSSI", debugFmSeekRssi); break;
+    case DBG_FM_SEEK_SNR:  autoText(text, size, "FM Seek SNR", debugFmSeekSnr); break;
+    case DBG_AM_SEEK_RSSI: autoText(text, size, "AM Seek RSSI", debugAmSeekRssi); break;
+    case DBG_AM_SEEK_SNR:  autoText(text, size, "AM Seek SNR", debugAmSeekSnr); break;
+    case DBG_ANTCAP:       autoText(text, size, "AM Antenna Cap", debugAntCap); break;
+    case DBG_BATT_CAL:     snprintf(text, size, "Batt Cal %+d mV", batteryCalMv); break;
+    case DBG_USBLOG:       snprintf(text, size, "USB Log %s", debugUsbLog? "On" : "Off"); break;
+    case DBG_WELCOME:      snprintf(text, size, "Show Welcome"); break;
+    case DBG_ERASE_DX:     snprintf(text, size, "Erase DX Log"); break;
+    case DBG_ERASE_LISTS:  snprintf(text, size, "Erase Lists"); break;
+    case DBG_REINSTALL:    snprintf(text, size, "Reinstall FW"); break;
+    case DBG_REBOOT:       snprintf(text, size, "Reboot"); break;
+    case DBG_DOWNLOAD:     snprintf(text, size, "Download Mode"); break;
+    case DBG_OFF:          snprintf(text, size, "Debug Off"); break;
+    default:               *text = '\0'; (void)maximum; break;
+  }
+}
+
 static void doDebug(int16_t enc, int16_t enca)
 {
-  if(!debugEdit)
+  // Any movement leaves the live information
+  if(debugInfoView)
   {
-    debugIdx = wrap_range(debugIdx, enc, 0, LAST_ITEM(debugItems));
+    debugInfoView = false;
     return;
   }
 
-  // Past what the receiver is known to support, on purpose
+  if(!debugEdit)
+  {
+    debugIdx = wrap_range(debugIdx, enc, 0, DBG_COUNT - 1);
+    return;
+  }
+
   bool fm = bands[bandIdx].bandMode==FM;
+  int maximum, minimum;
+  if(debugSetting(debugEdit, &maximum, &minimum))
+  {
+    // DEBUG_AUTO sits just below zero
+    debugValue = debugValue + enca;
+    debugValue = debugValue<minimum? minimum : debugValue>maximum? maximum : debugValue;
+    return;
+  }
+
+  // Band limits, past what the receiver is known to support, on purpose
   int64_t step  = fm? 100000 : 1000;
   int64_t value = (int64_t)debugValue + step * enca;
   int64_t lo = fm? 30000000 : 100000, hi = fm? 150000000 : 35000000;
   debugValue = value<lo? lo : value>hi? hi : value;
 }
 
+static void debugNotice(const char *text)
+{
+  drawMessage(text);
+  delay(900);
+}
+
 static void clickDebug(bool shortPress)
 {
   Band *band = &bands[bandIdx];
+  int maximum;
+
+  if(debugInfoView)
+  {
+    debugInfoView = false;
+    return;
+  }
 
   if(debugEdit)
   {
-    uint32_t minimum = debugEdit==1? debugValue : band->minimumFreq;
-    uint32_t maximum = debugEdit==2? debugValue : band->maximumFreq;
-    debugEdit = 0;
-    if(minimum >= maximum)
+    int16_t *setting = debugSetting(debugEdit, &maximum);
+    if(setting)
     {
-      drawMessage("Min >= Max");
-      delay(1000);
+      *setting = debugValue;
+      debugSaveSettings();
+      // Back to the firmware values first, so that Auto takes effect
+      applyDxMode();
+      if(debugEdit==DBG_ANTCAP && debugAntCap==DEBUG_AUTO && currentMode!=FM) selectBand(bandIdx);
+      debugEdit = 0;
       return;
     }
-    debugSetBandLimits(bandIdx, minimum, maximum);
-    if(band->currentFreq < minimum || band->currentFreq > maximum) band->currentFreq = minimum;
+
+    uint32_t minimum = debugEdit==DBG_MIN? debugValue : band->minimumFreq;
+    uint32_t maximumFreq = debugEdit==DBG_MAX? debugValue : band->maximumFreq;
+    debugEdit = 0;
+    if(minimum >= maximumFreq)
+    {
+      debugNotice("Min >= Max");
+      return;
+    }
+    debugSetBandLimits(bandIdx, minimum, maximumFreq);
+    if(band->currentFreq < minimum || band->currentFreq > maximumFreq) band->currentFreq = minimum;
     selectBand(bandIdx);
     prefsRequestSave(SAVE_CUR_BAND);
     return;
@@ -354,27 +464,84 @@ static void clickDebug(bool shortPress)
 
   switch(debugIdx)
   {
-    case 0: currentCmd = CMD_NONE; break;
-    case 1:
-    case 2:
+    case DBG_BACK: currentCmd = CMD_NONE; break;
+    case DBG_MIN:
+    case DBG_MAX:
       debugEdit = debugIdx;
-      debugValue = debugIdx==1? band->minimumFreq : band->maximumFreq;
+      debugValue = debugIdx==DBG_MIN? band->minimumFreq : band->maximumFreq;
       break;
-    case 3:
+    case DBG_RESET:
       debugResetBandLimits(bandIdx);
       if(band->currentFreq < band->minimumFreq || band->currentFreq > band->maximumFreq)
         band->currentFreq = band->minimumFreq;
       selectBand(bandIdx);
-      drawMessage("Band reset");
-      delay(800);
+      debugNotice("Band reset");
       break;
-    case 4: debugUsbLog = !debugUsbLog; break;
-    case 5:
+    case DBG_RESET_ALL:
+      for(int i=0 ; i<getTotalBands() ; i++)
+      {
+        debugResetBandLimits(i);
+        if(bands[i].currentFreq < bands[i].minimumFreq || bands[i].currentFreq > bands[i].maximumFreq)
+          bands[i].currentFreq = bands[i].minimumFreq;
+      }
+      selectBand(bandIdx);
+      debugNotice("Bands reset");
+      break;
+    case DBG_INFO: debugInfoView = true; break;
+    case DBG_CPU:
+      debugCpuMhz = debugCpuMhz==80? 160 : debugCpuMhz==160? 240 : 80;
+      debugSaveSettings();
+      debugApplySystem();
+      break;
+    case DBG_I2C:
+      debugI2cKhz = debugI2cKhz==400? 800 : debugI2cKhz==800? 1000 : 400;
+      debugSaveSettings();
+      debugApplySystem();
+      break;
+    case DBG_USBLOG: debugUsbLog = !debugUsbLog; break;
+    case DBG_WELCOME:
+      prefs.begin("cfw", false, STORAGE_PARTITION);
+      prefs.remove("Build");
+      prefs.end();
+      debugNotice("On next boot");
+      break;
+    case DBG_ERASE_DX:
+      LittleFS.remove(DXWATCH_LOG);
+      debugNotice("DX log erased");
+      break;
+    case DBG_ERASE_LISTS:
+      while(stationsLocalCount()) stationsLocalDelete(0);
+      clearStationInfo();
+      identifyFrequency(currentFrequency);
+      debugNotice("Lists erased");
+      break;
+    case DBG_REINSTALL:
+      currentCmd = CMD_NONE;
+      otaRequestReinstall();
+      break;
+    case DBG_REBOOT:
+      debugNotice("Rebooting");
+      prefsSave();
+      ESP.restart();
+      break;
+    case DBG_DOWNLOAD:
+      debugNotice("Download mode");
+      prefsSave();
+      debugRebootToDownload();
+      break;
+    case DBG_OFF:
       debugSetMode(false);
       settingsIdx = 0;
       currentCmd = CMD_NONE;
-      drawMessage("Debug Off");
-      delay(800);
+      debugNotice("Debug Off");
+      break;
+    default:
+      // The remaining items are values edited with the encoder
+      if(debugSetting(debugIdx, &maximum))
+      {
+        debugEdit = debugIdx;
+        debugValue = *debugSetting(debugIdx, &maximum);
+      }
       break;
   }
 }
@@ -1317,6 +1484,9 @@ void applyDxMode()
     rx.setSeekAmSNRThreshold(dxMode? 1 : 3);
     doSoftMute(0);
   }
+
+  // Debug mode overrides come last
+  debugApplyRadio();
 }
 
 void toggleDxMode()
@@ -1963,6 +2133,7 @@ static void clickSettings(int cmd, bool shortPress)
       break;
 
     case MENU_DXMODE:     currentCmd = CMD_DXMODE;    break;
+    case MENU_BATTERY:    currentCmd = CMD_BATTERY;   break;
   }
 }
 
@@ -2004,6 +2175,10 @@ bool doSideBar(uint16_t cmd, int16_t enc, int16_t enca)
     case CMD_ZOOM:       doZoom(enc);break;
     case CMD_ENC_ACCEL:  doEncoderAcceleration();break;
     case CMD_DXMODE:     doDxMode();break;
+    case CMD_BATTERY:
+      batteryShowPercent = !batteryShowPercent;
+      prefsRequestSave(SAVE_SETTINGS);
+      break;
     case CMD_DEBUG:      doDebug(scrollDirection * enc, scrollDirection * enca);break;
     case CMD_DXWATCH:
       if(dxWatchPhase()==DXW_OFF)
@@ -3228,32 +3403,32 @@ static void drawDxWatch(int x, int y, int sx)
 
 static void drawDebug(int x, int y, int sx)
 {
-  bool fm = bands[bandIdx].bandMode==FM;
-  char title[24];
-
   if(debugEdit)
   {
-    char value[16];
-    drawCommon(debugEdit==1? "Edit Min" : "Edit Max", x, y, sx);
-    freqText(value, sizeof(value), debugValue, fm);
+    char value[24];
+    int maximum;
+    bool fm = bands[bandIdx].bandMode==FM;
+    drawCommon("Edit", x, y, sx);
+    if(debugSetting(debugEdit, &maximum))
+    {
+      if(debugEdit==DBG_BATT_CAL) snprintf(value, sizeof(value), "%+ld mV", (long)debugValue);
+      else if(debugValue==DEBUG_AUTO) strcpy(value, "Auto");
+      else snprintf(value, sizeof(value), "%ld", (long)debugValue);
+    }
+    else freqText(value, sizeof(value), debugValue, fm);
     spr.setTextDatum(MC_DATUM);
     spr.setTextColor(TH.menu_param);
     drawMarquee(value, 8+x, 52+y, 62+sx, FONT_LARGE, false);
-    spr.drawString(bands[bandIdx].bandName, 40+x+(sx/2), 90+y, FONT_SMALL);
+    char label[32];
+    debugLabel(debugEdit, label, sizeof(label));
+    drawMarquee(label, 8+x, 84+y, 62+sx, FONT_SMALL, true);
     return;
   }
 
+  char title[24];
   snprintf(title, sizeof(title), "%s%s", bands[bandIdx].bandName, debugBandLimitsChanged(bandIdx)? "*" : "");
-  drawList(title, ITEM_COUNT(debugItems) - 1, debugIdx, [](int i, char *text, size_t size) {
-    bool fm = bands[bandIdx].bandMode==FM;
-    char value[16];
-    switch(i + 1)
-    {
-      case 1: freqText(value, sizeof(value), bands[bandIdx].minimumFreq, fm); snprintf(text, size, "Min %s", value); break;
-      case 2: freqText(value, sizeof(value), bands[bandIdx].maximumFreq, fm); snprintf(text, size, "Max %s", value); break;
-      case 4: snprintf(text, size, "USB Log %s", debugUsbLog? "On" : "Off"); break;
-      default: snprintf(text, size, "%s", debugItems[i + 1]); break;
-    }
+  drawList(title, DBG_COUNT - 1, debugIdx, [](int i, char *text, size_t size) {
+    debugLabel(i + 1, text, size);
   }, x, y, sx);
 }
 
@@ -3317,6 +3492,13 @@ void drawSideBar(uint16_t cmd, int x, int y, int sx)
     case CMD_EONLIST:    drawEonList(x, y, sx);    break;
     case CMD_DXMODE:     drawDxMode(x, y, sx);     break;
     case CMD_DXWATCH:    drawDxWatch(x, y, sx);    break;
+    case CMD_BATTERY:
+      drawCommon(settings[MENU_BATTERY], x, y, sx);
+      drawZoomedMenu(settings[MENU_BATTERY]);
+      spr.setTextDatum(MC_DATUM);
+      spr.setTextColor(TH.menu_param);
+      spr.drawString(batteryShowPercent? "Percent" : "Voltage", 40+x+(sx/2), 60+y, FONT_LARGE);
+      break;
     case CMD_DEBUG:      drawDebug(x, y, sx);      break;
     default:             drawInfo(x, y, sx);       break;
   }

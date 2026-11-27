@@ -162,9 +162,20 @@ UnleashedATS has a debug mode for testing and development. It is hidden on purpo
 
 To toggle it, open *Settings → About* and **short press** the encoder (hold it for about half a second) three times. The receiver confirms with *Debug On* or *Debug Off*. A click still leaves the About screen as usual.
 
-In debug mode, a **Debug** entry appears at the end of the Settings menu, for the band the receiver is on:
+In debug mode, a **Debug** entry appears at the end of the Settings menu. Its title is the band the receiver is on, with a `*` when its limits differ from the defaults. Values marked **Auto** are left to the firmware; to edit one, click it, rotate, and click again.
 
-* **Min**, **Max** - Click to edit the lower or upper limit of the band, rotate to change it (100 kHz steps on FM, 1 kHz steps on AM/SSB, faster when rotated quickly), click again to apply it. The limits can go beyond what the SI4732 supports (30-150 MHz on FM, 100 kHz-35 MHz on AM): the receiver accepts them, but tuning outside its range may give noise, silence or no lock at all. The limits are saved and survive a restart; the band name gets a `*` while they differ from the defaults.
-* **Reset Band** - Put the original limits of the band back.
+* **Min**, **Max** - Lower and upper limit of the band (100 kHz steps on FM, 1 kHz steps on AM/SSB, faster when rotated quickly). They can go beyond what the SI4732 supports (30-150 MHz on FM, 100 kHz-35 MHz on AM): the receiver accepts them, but tuning outside its range may give noise, silence or no lock at all. The limits are saved and survive a restart.
+* **Reset Band**, **Reset All Bands** - Put the original limits back.
+* **Live Info** - A full screen of live readings: RSSI, SNR, FM pilot, stereo blend, multipath and frequency offset, AM antenna capacitor, AGC state and gain index, RDS group count, corrupt groups and most frequent group types, SI4732 part and firmware revision, CPU and I2C clocks, main loop time, free memory, uptime and battery voltage. Click or rotate to leave.
+* **CPU** - 80, 160 or 240 MHz. Faster can help the web interface and lists, at the cost of battery life and heat.
+* **I2C** - 400, 800 or 1000 kHz between the ESP32 and the SI4732.
+* **FM SoftMute** - Fixed FM soft mute attenuation (0-31 dB), overriding DX Mode.
+* **FM Seek RSSI**, **FM Seek SNR**, **AM Seek RSSI**, **AM Seek SNR** - Fixed seek thresholds, overriding DX Mode.
+* **AM Antenna Cap** - Fixed antenna tuning capacitor value for AM (0-6143).
 * **USB Log** - Print diagnostics, such as the steps of the station list downloads, on the USB port in ad hoc mode.
-* **Debug Off** - Leave debug mode. The changed band limits stay until each band is reset.
+* **Show Welcome** - Show the welcome screen again on the next boot.
+* **Erase DX Log**, **Erase Lists** - Delete the DX Watch log or the downloaded station lists.
+* **Reinstall FW** - Download and install the latest release over Wi-Fi even if it is the version already running.
+* **Reboot** - Restart the receiver.
+* **Download Mode** - Restart into the ESP32 ROM bootloader, ready for esptool or the Flash Download Tool, without the BOOT button. Power cycle the receiver to leave it.
+* **Debug Off** - Leave debug mode. Band limits stay changed until reset; the other overrides only apply in debug mode.

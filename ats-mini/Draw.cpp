@@ -6,6 +6,7 @@
 #include "BleMode.h"
 #include "Draw.h"
 #include "AltFreq.h"
+#include "Debug.h"
 
 #define PEAK_HOLD_TIME  1500  // Time the S-meter peak marker stays put (msecs)
 #define PEAK_DECAY_TIME   50  // Time for the peak marker to fall by 1dB (msecs)
@@ -536,6 +537,13 @@ void drawScreen()
 
   // Clear screen buffer
   spr.fillSprite(TH.bg);
+
+  // The debug live information takes the whole screen
+  if(currentCmd==CMD_DEBUG && debugInfoView)
+  {
+    debugDrawInfo();
+    return;
+  }
 
   // About screen is a special case
   if(currentCmd==CMD_ABOUT)

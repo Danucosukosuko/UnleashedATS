@@ -814,6 +814,12 @@ bool handleClick(bool shortPress)
 //
 void loop()
 {
+  // Main loop timing, shown by the debug information
+  static uint32_t lastLoopUs = 0;
+  uint32_t nowUs = micros();
+  debugLoopUs = nowUs - lastLoopUs;
+  lastLoopUs = nowUs;
+
   webScreenshotTick();
   offTimerTick();
   bool needRedraw = false;

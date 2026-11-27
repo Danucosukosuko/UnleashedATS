@@ -257,6 +257,10 @@ bool consumeAbortPending();
 // Battery.c
 float batteryMonitor();
 bool drawBattery(int x, int y);
+uint8_t batteryPercent();
+bool batteryCharging();
+extern bool batteryShowPercent;
+extern int16_t batteryCalMv;
 
 // Scan.c (frequencies and steps in Hz)
 void scanRun(uint32_t centerFreq, uint32_t step);

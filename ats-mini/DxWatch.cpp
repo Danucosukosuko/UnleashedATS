@@ -2,6 +2,7 @@
 #include "Utils.h"
 #include "Menu.h"
 #include "Storage.h"
+#include "Stations.h"
 #include "DxWatch.h"
 
 #include <LittleFS.h>
@@ -10,10 +11,14 @@
 #define DXW_LAST_HZ    108000000
 #define DXW_STEP_HZ       100000
 #define DXW_CHANNELS   ((DXW_LAST_HZ - DXW_FIRST_HZ) / DXW_STEP_HZ + 1)
-#define DXW_LEARN_SWEEPS       2  // Sweeps spent learning the local stations
+#define DXW_LEARN_SWEEPS       3  // Sweeps spent learning the local stations
+#define DXW_TAKEN_SNR          2  // Any signal this clean while learning marks a channel as local (dB)
 #define DXW_MIN_RSSI          10  // Weakest signal worth decoding (dBuV)
-#define DXW_MIN_SNR            4  // Noisiest signal worth decoding (dB)
-#define DXW_PI_TIME         450U  // Time given to the decoder to report a PI (msecs)
+#define DXW_MIN_SNR            4  // Noisiest signal worth decoding while learning (dB)
+#define DXW_CATCH_SNR          5  // Noisiest signal worth reporting (dB)
+#define DXW_LEARN_PI_TIME  1500U  // Time given to the decoder to report a PI while learning (msecs)
+#define DXW_PI_TIME        1200U  // Time given to the decoder to confirm a new PI (msecs)
+#define DXW_PI_REPEATS         2  // Matching groups needed before a new PI is believed
 #define DXW_PS_TIME        3000U  // Time given to the decoder to spell out a name (msecs)
 #define DXW_RESUME_TIME   60000U  // A catch nobody attends is left after this (msecs)
 #define DXW_MAX_KNOWN        160  // Program identifications remembered as local
@@ -30,6 +35,7 @@ static int savedBand = -1;
 static DxCatch lastCatch;
 
 static uint16_t *known = nullptr;      // Local program identifications
+static uint8_t *taken = nullptr;       // Channels with a local station on them
 static uint16_t knownCount = 0;
 static uint16_t caught[DXW_MAX_CAUGHT];
 static uint16_t caughtCount = 0;
@@ -67,7 +73,9 @@ static void quiet(bool on)
 void dxWatchStart()
 {
   if(!known) known = static_cast<uint16_t *>(ps_calloc(DXW_MAX_KNOWN, sizeof(uint16_t)));
-  if(!known) return;
+  if(!taken) taken = static_cast<uint8_t *>(ps_calloc(DXW_CHANNELS, sizeof(uint8_t)));
+  if(!known || !taken) return;
+  memset(taken, 0, DXW_CHANNELS);
 
   savedBand = bandIdx;
   savedFreq = currentFrequency;
@@ -108,21 +116,38 @@ void dxWatchStop(bool stay)
   prefsRequestSave(SAVE_CUR_BAND);
 }
 
+static void learn(uint16_t pi)
+{
+  if(pi && !listed(known, knownCount, pi) && knownCount<DXW_MAX_KNOWN) known[knownCount++] = pi;
+}
+
+// The waits below give way to a click on the encoder, so that leaving
+// DX Watch never feels stuck
+static bool clicked()
+{
+  return(digitalRead(ENCODER_PUSH_BUTTON)==LOW);
+}
+
 //
-// Wait for a program identification with a clean block A
+// Wait for the same program identification in a row of groups with a
+// clean block A, so that a corrupt group is never taken for a station
 //
-static uint16_t readPi()
+static uint16_t readPi(uint32_t time, int repeats)
 {
   uint32_t start = millis();
+  uint16_t last = 0;
+  int seen = 0;
 
   rx.getRdsStatus(0, 1, 0);
-  while(millis() - start < DXW_PI_TIME)
+  while(millis() - start < time && !clicked())
   {
     rx.getRdsStatus();
     if(rx.getNumRdsFifoUsed() && rx.getRdsBlockAReliable())
     {
       uint16_t pi = rx.getRdsPI();
-      if(pi) return(pi);
+      if(pi && pi==last) seen++;
+      else if(pi) { last = pi; seen = 1; }
+      if(pi && seen>=repeats) return(pi);
     }
     delay(15);
   }
@@ -134,7 +159,7 @@ static void readPs(char *ps)
   uint32_t start = millis();
   strcpy(ps, "");
 
-  while(millis() - start < DXW_PS_TIME)
+  while(millis() - start < DXW_PS_TIME && !clicked())
   {
     rx.getRdsStatus();
     const char *name = rx.getNumRdsFifoUsed()? rx.getRdsStationName() : nullptr;
@@ -186,29 +211,53 @@ bool dxWatchTick()
   rssi = sigRssi;
   snr  = sigSnr;
 
-  bool redraw = !(channel % 8);
-  uint16_t pi = (sigRssi>=DXW_MIN_RSSI && sigSnr>=DXW_MIN_SNR)? readPi() : 0;
+  // The display follows every channel
+  bool redraw = true;
 
-  if(pi && phase==DXW_LEARNING)
+  if(phase==DXW_LEARNING)
   {
-    if(!listed(known, knownCount, pi) && knownCount<DXW_MAX_KNOWN) known[knownCount++] = pi;
+    // Anything heard here belongs to the place, decoded or not
+    if(sigSnr>=DXW_TAKEN_SNR) taken[channel] = 1;
+    uint16_t pi = (sigRssi>=DXW_MIN_RSSI && sigSnr>=DXW_MIN_SNR)? readPi(DXW_LEARN_PI_TIME, 1) : 0;
+    if(pi)
+    {
+      taken[channel] = 1;
+      learn(pi);
+    }
   }
-  else if(pi && !listed(known, knownCount, pi) && !listed(caught, caughtCount, pi))
+  else if(!taken[channel] && sigRssi>=DXW_MIN_RSSI && sigSnr>=DXW_CATCH_SNR)
   {
-    // Something that is not usually there: let it play
-    if(caughtCount<DXW_MAX_CAUGHT) caught[caughtCount++] = pi;
-    lastCatch.freq = freq;
-    lastCatch.pi = pi;
-    lastCatch.rssi = sigRssi;
-    lastCatch.snr = sigSnr;
-    catches++;
-    phase = DXW_CATCH;
-    catchTime = millis();
-    clearStationInfo();
-    quiet(false);
-    readPs(lastCatch.ps);
-    logCatch();
-    return(true);
+    // A channel that was empty while learning has a signal now
+    uint16_t pi = readPi(DXW_PI_TIME, DXW_PI_REPEATS);
+
+    if(pi && listed(known, knownCount, pi))
+    {
+      // A local station spilling over, or coming and going: not news
+      taken[channel] = 1;
+    }
+    else if(pi && !listed(caught, caughtCount, pi) && stationsIdentify(freq, false))
+    {
+      // Listed for the home province: a nearby station, not a catch
+      taken[channel] = 1;
+      learn(pi);
+    }
+    else if(pi && !listed(caught, caughtCount, pi))
+    {
+      // Something that is not usually there: let it play
+      if(caughtCount<DXW_MAX_CAUGHT) caught[caughtCount++] = pi;
+      lastCatch.freq = freq;
+      lastCatch.pi = pi;
+      lastCatch.rssi = sigRssi;
+      lastCatch.snr = sigSnr;
+      catches++;
+      phase = DXW_CATCH;
+      catchTime = millis();
+      clearStationInfo();
+      quiet(false);
+      readPs(lastCatch.ps);
+      logCatch();
+      return(true);
+    }
   }
 
   // Next channel, and next sweep at the end of the band
