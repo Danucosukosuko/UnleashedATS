@@ -297,6 +297,8 @@ static EonNetwork eonSelected;    // Network being browsed
 //
 static uint8_t dxwIdx = 1;
 
+static inline int wrap_range(int v, int enc, int vMin, int vMax);
+
 //
 // Debug menu (debug mode only)
 //

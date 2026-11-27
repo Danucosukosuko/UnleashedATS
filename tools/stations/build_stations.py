@@ -67,6 +67,9 @@ REGION_OVERRIDE = {
     "ID": "Asia", "PG": "Oceania", "TT": "North America", "GL": "North America",
 }
 
+# Languages for names where the official languages in Wikidata mislead
+LANG_OVERRIDE = {"US": ["en"]}
+
 # Local-language Wikipedia lists that the English category does not cover
 EXTRA_WIKI_PAGES = [
     ("es", "Anexo:Emisoras de radio de España", "ES"),
@@ -257,6 +260,9 @@ SELECT ?c ?iso ?name ?cont ?lang WHERE {
         if r.get("lang") and r["lang"] not in c["langs"]:
             c["langs"].append(r["lang"])
     for c in countries.values():
+        # Wikidata lists the languages of the territories but not English
+        if c["code"] in LANG_OVERRIDE:
+            c["langs"] = LANG_OVERRIDE[c["code"]] + [l for l in c["langs"] if l not in LANG_OVERRIDE[c["code"]]]
         if "en" in c["langs"]:
             c["langs"] = ["en"] + [l for l in c["langs"] if l != "en"]
         region = REGION_OVERRIDE.get(c["code"])
@@ -323,10 +329,12 @@ def regions_of(places, countries):
     United States, departments in France...)."""
     qids = [q for q in places if q and q.startswith("Q")]
     candidates, parents = {}, {}
-    for i in range(0, len(qids), 150):
-        values = " ".join("wd:" + q for q in qids[i:i + 150])
+    # DISTINCT matters: the query service repeats a row for every path
+    # between a place and its region, which can run to millions of rows
+    for i in range(0, len(qids), 50):
+        values = " ".join("wd:" + q for q in qids[i:i + 50])
         try:
-            rows = sparql(f"""SELECT ?p ?r ?up WHERE {{ VALUES ?p {{ {values} }}
+            rows = sparql(f"""SELECT DISTINCT ?p ?r ?up WHERE {{ VALUES ?p {{ {values} }}
   ?p wdt:P131* ?r . ?r wdt:P300 ?iso . OPTIONAL {{ ?r wdt:P131 ?up }} }}""")
         except Exception as e:
             log(f"  regions skipped: {e}")

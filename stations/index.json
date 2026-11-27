@@ -1,6 +1,6 @@
 {
  "format": 1,
- "generated": "2026-11-26",
+ "generated": "2026-11-27",
  "regions": [
   {
    "name": "Europe",
@@ -9,6 +9,16 @@
      "code": "ES",
      "name": "Spain",
      "count": 3973
+    }
+   ]
+  },
+  {
+   "name": "North America",
+   "countries": [
+    {
+     "code": "US",
+     "name": "United States",
+     "count": 6922
     }
    ]
   }
