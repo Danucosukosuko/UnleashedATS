@@ -143,7 +143,7 @@ To preview the theme, paste it to the serial console with the <kbd>^</kbd> chara
 ^x0000xFFFFxD69AxF800xD69Ax07E0xF800xF800xFFFFxFFFFx07E0xF800x001FxFFE0xD69AxD69AxD69Ax0000xD69AxD69AxF800xBEDFx0000xF800xFFFFxBEDFx105BxBEDFxBEDFxFFFFxD69AxF800xFFE0xD69AxFFFFxF800xC638
 ```
 
-Once you are happy, add the resulting colors to `Theme.cpp`.
+Once you are happy, add the resulting colors to `Theme.cpp`, or make the theme in the web [theme editor](manual.md#theme-editor), which keeps it on the receiver.
 
 ## Release process
 
@@ -153,6 +153,8 @@ Once you are happy, add the resulting colors to `Theme.cpp`.
 4. Add and commit the changes with a message like "Release X.XX", then push them to the repository
 5. Once the build is complete, download, flash and test it!
 6. Tag the release and push the tag `git tag -a vX.XX -m 'Version X.XX' && git push --follow-tags` (the tag should start with `v`!)
+
+UnleashedATS tags are `v<CFW version>-<ATS-Mini version>`, such as `v1.02-2.46`, with `VER_CFW` in `Common.h` holding the CFW version. A beta of an upcoming release is tagged `v1.02-2.46-beta1`, with `VER_BETA` set to the beta number (it is `0` for releases). The build publishes betas as prereleases, which only the beta update channel offers, with the CHANGELOG section of the release they lead to as their notes.
 
 Increase `VER_OTA` in `Common.h` when a release requires USB flashing, such as after a partition-table or bootloader change. Keep the increased value in subsequent releases so users who skip versions still receive the USB requirement. Updates between different `VER_OTA` values require USB, including downgrades.
 
@@ -179,3 +181,9 @@ In debug mode, a **Debug** entry appears at the end of the Settings menu. Its ti
 * **Reboot** - Restart the receiver.
 * **Download Mode** - Restart into the ESP32 ROM bootloader, ready for esptool or the Flash Download Tool, without the BOOT button. Power cycle the receiver to leave it.
 * **Debug Off** - Leave debug mode. Band limits stay changed until reset; the other overrides only apply in debug mode.
+
+## Hidden game
+
+UnleashedATS hides a small game, Skywave. To open it, go to *Settings → About*, rotate to the last page (Authors) and keep rotating the same way eight more steps.
+
+Your antenna is at the bottom of the screen and the encoder moves it. Keep the radio wave bouncing up into the ionosphere until every layer is broken through: the F2 layer takes three hits, F1 two, E and D one. Each level opens the layers in another pattern, speeds the wave up and narrows the antenna, and clearing one gives back a life, up to five. Click to transmit and to pause, hold the encoder to leave. The best score is kept on the receiver, and the radio goes on playing meanwhile.

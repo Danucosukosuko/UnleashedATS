@@ -23,6 +23,7 @@ static constexpr const lgfx::IFont* FONT_DIGITS  = &lgfx::fonts::Font7;  // 48px
 // companion apps look for
 #define RECEIVER_NAME  "ATS-Mini"
 #define FIRMWARE_URL   "https://github.com/Danucosukosuko/UnleashedATS"
+#define FIRMWARE_API  "https://api.github.com/repos/Danucosukosuko/UnleashedATS"
 #define MANUAL_URL     "https://danucosukosuko.github.io/UnleashedATS/manual.html"
 #define STATIONS_URL   "https://raw.githubusercontent.com/Danucosukosuko/UnleashedATS/main/stations"
 #define AUTHORS_LINE1  "Authors: PU2CLR (Ricardo Caratti),"
@@ -32,6 +33,7 @@ static constexpr const lgfx::IFont* FONT_DIGITS  = &lgfx::fonts::Font7;  // 48px
 #define AUTHORS_LINE5  "UnleashedATS CFW: Danucosukosuko"
 
 #define VER_CFW        101  // UnleashedATS version (v1.01)
+#define VER_BETA         0  // Beta number of this build, 0 for a release (v1.02-2.46-beta1 is 102 and 1)
 #define VER_APP        246  // ATS-Mini version the CFW is based on
 #define VER_OTA          1  // OTA compatibility; bump when a full USB flash is required
 #define VER_SETTINGS    71  // Settings version

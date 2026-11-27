@@ -9,6 +9,7 @@
 
 #include <soc/rtc_cntl_reg.h>
 #include <esp_heap_caps.h>
+#include <driver/gpio.h>
 
 #define DEBUG_MAX_BANDS 48
 
@@ -178,8 +179,87 @@ bool debugBandLimitsChanged(uint8_t band)
          (bands[band].minimumFreq != defaultMin[band] || bands[band].maximumFreq != defaultMax[band]));
 }
 
-void debugRebootToDownload()
+// Display control lines latched through the restart into download mode,
+// so that the panel keeps showing the flashing screen: chip select off,
+// out of reset, bus idle
+#if defined(LILYGO_SI473X)
+static const int8_t heldHigh[] = { 10, 9, PIN_LCD_BL };
+#else
+static const int8_t heldHigh[] = { 6, 5, 8, 9, PIN_LCD_BL, PIN_POWER_ON };
+#endif
+
+void debugReleaseHolds()
 {
+  // Whatever comes after the download mode must drive these pins again
+  for(size_t i=0 ; i<ITEM_COUNT(heldHigh) ; i++) gpio_hold_dis((gpio_num_t)heldHigh[i]);
+  gpio_hold_dis((gpio_num_t)AUDIO_MUTE);
+  if(PIN_AMP_EN >= 0) gpio_hold_dis((gpio_num_t)PIN_AMP_EN);
+  // Held down to ask the bootloader for the recovery app
+  gpio_hold_dis((gpio_num_t)ENCODER_PUSH_BUTTON);
+}
+
+static void drawFlashingScreen()
+{
+  const int cx = 58, cy = 80;
+  spr.fillSprite(TH.bg);
+
+  // USB symbol
+  uint16_t c = TH.text;
+  spr.fillRect(cx - 2, cy - 30, 5, 58, c);
+  spr.fillTriangle(cx - 9, cy - 28, cx + 9, cy - 28, cx, cy - 42, c);
+  spr.fillCircle(cx, cy + 32, 8, c);
+  spr.drawWideLine(cx, cy + 10, cx - 22, cy - 6, 2.5f, c);
+  spr.drawWideLine(cx - 22, cy - 6, cx - 22, cy - 18, 2.5f, c);
+  spr.fillCircle(cx - 22, cy - 22, 6, c);
+  spr.drawWideLine(cx, cy + 2, cx + 22, cy - 12, 2.5f, c);
+  spr.drawWideLine(cx + 22, cy - 12, cx + 22, cy - 22, 2.5f, c);
+  spr.fillRect(cx + 16, cy - 34, 13, 12, c);
+
+  spr.setTextDatum(TL_DATUM);
+  spr.setTextColor(TH.menu_hdr);
+  spr.drawString("USB flashing mode", 112, 18, FONT_SMALL);
+  spr.drawFastHLine(112, 36, 200, TH.menu_border);
+  spr.setTextColor(TH.text);
+  spr.drawString("Waiting for esptool or", 112, 44, FONT_SMALL);
+  spr.drawString("a web flasher over USB", 112, 60, FONT_SMALL);
+  spr.setTextColor(TH.text_muted);
+  spr.drawString("ESP32-S3 download mode", 112, 82, FONT_SMALL);
+  spr.drawString(getVersion(true), 112, 98, FONT_SMALL);
+
+  spr.fillRect(0, 124, DISPLAY_WIDTH, 46, TH.box_bg);
+  spr.setTextDatum(MC_DATUM);
+  spr.setTextColor(TH.box_text);
+  spr.drawString("Switch off and on to leave without flashing", DISPLAY_WIDTH / 2, 136, FONT_SMALL);
+  spr.setTextColor(TH.text_muted);
+  spr.drawString("Still here after flashing? Power off fully", DISPLAY_WIDTH / 2, 156, FONT_SMALL);
+
+  spr.pushSprite(0, 0);
+}
+
+void debugRebootToDownload(bool radioUp)
+{
+  drawFlashingScreen();
+
+  // Quiet while waiting
+  if(radioUp) rx.setVolume(0);
+  digitalWrite(AUDIO_MUTE, HIGH);
+  if(PIN_AMP_EN >= 0) digitalWrite(PIN_AMP_EN, LOW);
+  gpio_hold_en((gpio_num_t)AUDIO_MUTE);
+  if(PIN_AMP_EN >= 0) gpio_hold_en((gpio_num_t)PIN_AMP_EN);
+
+  // The backlight is PWM, which cannot be latched: plain on instead
+  ledcDetach(PIN_LCD_BL);
+
+  // Latch the display lines. The latch is kept through a restart, not
+  // through a power off.
+  for(size_t i=0 ; i<ITEM_COUNT(heldHigh) ; i++)
+  {
+    pinMode(heldHigh[i], OUTPUT);
+    digitalWrite(heldHigh[i], HIGH);
+    gpio_hold_en((gpio_num_t)heldHigh[i]);
+  }
+  delay(20);
+
   // The ROM bootloader waits for esptool, no BOOT button needed
   REG_WRITE(RTC_CNTL_OPTION1_REG, RTC_CNTL_FORCE_DOWNLOAD_BOOT);
   esp_restart();

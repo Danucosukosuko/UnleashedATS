@@ -40,6 +40,9 @@ void debugApplyRadio();
 void debugApplySystem();
 
 void debugDrawInfo();
-void debugRebootToDownload();
+// Restart into the ESP32 download mode, with a screen saying so that stays
+// up while esptool works. The first thing at startup releases its latches.
+void debugRebootToDownload(bool radioUp = true);
+void debugReleaseHolds();
 
 #endif // DEBUG_MODE_H

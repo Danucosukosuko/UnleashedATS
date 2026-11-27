@@ -9,11 +9,19 @@ static const char pageUpdate[] PROGMEM = R"HTML(<H1>{{title}}</H1>
 {{{navigation}}}
 <TABLE COLUMNS="1">
   <TR><TD CLASS="CENTER">{{message}}</TD></TR>
+  {{{notes}}}
   <TR><TH CLASS="HEADING">
     <FORM METHOD="POST" ACTION="/update">
       <BUTTON TYPE="SUBMIT" NAME="action" VALUE="{{action}}" STYLE="padding: 0.5em 2em;" {{disabled}}>{{button}}</BUTTON>
     </FORM>
   </TH></TR>
+  <TR><TD CLASS="CENTER">
+    <FORM METHOD="POST" ACTION="/update">
+      Update channel: <B>{{channel}}</B>
+      <BUTTON TYPE="SUBMIT" NAME="action" VALUE="{{switch}}" {{disabled}}>{{switchlabel}}</BUTTON>
+    </FORM>
+    <SMALL>Betas get the new features first and may still have rough edges.</SMALL>
+  </TD></TR>
   <TR><TD CLASS="CENTER">
     <DETAILS><SUMMARY>Manual upload</SUMMARY>
       <FORM METHOD="POST" ACTION="/update/upload" ENCTYPE="multipart/form-data" ONSUBMIT="this.elements.size.value=this.elements.firmware.files[0].size;this.querySelector('button').disabled=true;">

@@ -1,0 +1,22 @@
+# The recovery app, started by the UnleashedATS bootloader when the encoder
+# is held for two seconds at power on. Display.h, Rotary.* and
+# partitions.csv are copied from ../ats-mini before building (see
+# .github/workflows/build.yml).
+profiles:
+  esp32s3-ospi:
+    fqbn: esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=8M,PSRAM=opi,CPUFreq=80,USBMode=hwcdc,FlashMode=qio,PartitionScheme=custom,DebugLevel=none
+    platforms:
+      - platform: esp32:esp32 (3.3.13)
+        platform_index_url: https://espressif.github.io/arduino-esp32/package_esp32_index.json
+    libraries:
+      - LovyanGFX (1.3.0)
+
+  esp32s3-qspi:
+    fqbn: esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=8M,PSRAM=enabled,CPUFreq=80,USBMode=hwcdc,FlashMode=qio,PartitionScheme=custom,DebugLevel=none
+    platforms:
+      - platform: esp32:esp32 (3.3.13)
+        platform_index_url: https://espressif.github.io/arduino-esp32/package_esp32_index.json
+    libraries:
+      - LovyanGFX (1.3.0)
+
+default_profile: esp32s3-ospi

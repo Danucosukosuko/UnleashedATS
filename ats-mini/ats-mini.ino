@@ -23,6 +23,10 @@
 #include "Stations.h"
 #include "DxWatch.h"
 #include "Debug.h"
+#include "SafeMode.h"
+#include "Recovery.h"
+#include "Ota.h"
+#include "Game.h"
 #include <stdlib.h>
 #include <time.h>
 
@@ -118,6 +122,14 @@ SI4735_fixed rx;
 //
 void setup()
 {
+  // After the USB flashing mode, take the display lines back
+  debugReleaseHolds();
+
+  // A firmware that keeps crashing at startup hands over to the recovery
+  // app, or to the safe mode when there is none
+  bool crashLoop = recoveryCrashLoop();
+  if(crashLoop) recoveryRestart();
+
   // Keep the C library clock in UTC; display offsets are applied separately.
   setenv("TZ", "UTC0", 1);
   tzset();
@@ -167,22 +179,12 @@ void setup()
   spr.setFont(&lgfx::fonts::Orbitron_Light_24);
   spr.setTextColor(TH.text, TH.bg);
 
-  // Press and hold Encoder button to force an preferences reset
-  // Note: preferences reset is recommended after firmware updates
-  if(digitalRead(ENCODER_PUSH_BUTTON)==LOW)
-  {
-    nvsErase();
-    diskInit(true);
+  // Holding the encoder button at power on opens the safe mode, where
+  // erasing the settings is one of the options
+  if(digitalRead(ENCODER_PUSH_BUTTON)==LOW || crashLoop) safeModeRun(crashLoop);
 
-    ledcWrite(PIN_LCD_BL, 255);       // Default value 255 = 100%
-    tft.setTextSize(2);
-    tft.setTextColor(TH.text, TH.bg);
-    tft.println(getVersion(true));
-    tft.println();
-    tft.setTextColor(TH.text_warn, TH.bg);
-    tft.print("Resetting Preferences");
-    while(digitalRead(ENCODER_PUSH_BUTTON) == LOW) delay(100);
-  }
+  // Custom themes, before the settings select one of them
+  themesInit();
 
   // Initialize flash file system
   diskInit();
@@ -268,6 +270,9 @@ void setup()
     delay(3000);
   }
 
+  // This firmware starts: a reset no longer brings back the previous one
+  otaConfirmRunning();
+
   // Greet the user after a new firmware has been flashed or installed
   welcomeCheck();
   drawScreen();
@@ -279,8 +284,9 @@ void setup()
   attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_A), rotaryEncoder, CHANGE);
   attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_B), rotaryEncoder, CHANGE);
 
-  // Connect WiFi, if necessary
-  netInit(wifiModeIdx);
+  // Connect WiFi, if necessary. Recovery from safe mode turns it on.
+  netInit(safeModeWifi()? NET_AP_CONNECT : wifiModeIdx);
+  if(safeModeWifi()) statusShow("Recovery Wi-Fi " RECEIVER_NAME, "Open 10.1.1.1/update", 15000);
 
   // Start Bluetooth LE, if necessary
   bleInit(bleModeIdx);
@@ -823,6 +829,23 @@ void loop()
   webScreenshotTick();
   offTimerTick();
   bool needRedraw = false;
+
+  // Changes made in the web theme editor
+  needRedraw |= themesTick();
+
+  // Reinstall requested from safe mode, once online
+  safeModeTick();
+
+  // The hidden game runs its own frames
+  needRedraw |= gameTick();
+
+  // Running for a while: no longer a crash at startup
+  static bool stable = false;
+  if(!stable && currentTime > 20000)
+  {
+    recoveryStable();
+    stable = true;
+  }
   uint32_t encCounts = consumeEncoderCounts();
   int16_t encCount = (int16_t)(encCounts & 0xFFFF);
   int16_t encCountAccel = (int16_t)(encCounts >> 16);
@@ -838,6 +861,15 @@ void loop()
 
   if(encCount)
     needRedraw |= handleRotation(encCount, encCountAccel, button.isPressed);
+  else if(!physicalPushAndRotate && button.isLongPressed && currentCmd == CMD_GAME)
+  {
+    // Holding the button leaves the game. The press must end here, or it
+    // would go on to switch the display off.
+    gameStop();
+    while(digitalRead(ENCODER_PUSH_BUTTON) == LOW) delay(10);
+    pb1.update(false, 0);
+    needRedraw = true;
+  }
   else if(!physicalPushAndRotate && button.isLongPressed)
   {
     sleepOn(!sleepOn());
@@ -863,7 +895,8 @@ void loop()
     if(currentCmd != CMD_NONE && currentCmd != CMD_SEEK && currentCmd != CMD_SCAN && currentCmd != CMD_MEMORY &&
        currentCmd != CMD_MEMSCAN && currentCmd != CMD_STATIONS &&
        currentCmd != CMD_LOADSTN && currentCmd != CMD_AFLIST && currentCmd != CMD_EONLIST &&
-       currentCmd != CMD_DXWATCH && currentCmd != CMD_DEBUG)
+       currentCmd != CMD_DXWATCH && currentCmd != CMD_DEBUG &&
+       currentCmd != CMD_OTANOTES && currentCmd != CMD_GAME)
     {
       currentCmd = CMD_NONE;
       needRedraw = true;

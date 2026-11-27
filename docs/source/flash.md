@@ -37,12 +37,28 @@ So, you need to flash your receiver using **just one** of the following two ways
 
 Do not omit `boot_app0.bin` when flashing separate files. For older release archives without this file, use the merged image instead.
 
+## Flash layout and the recovery app
+
+Since version 1.02, UnleashedATS uses its own flash layout and bootloader, which add the [recovery app](manual.md#recovery-app). They come with a USB flash only: Wi-Fi updates never change the bootloader or the layout, and keep working on receivers that still have the earlier one (without the recovery app).
+
+| Offset | File | Contents |
+|---|---|---|
+| `0x0` | `ats-mini.ino.bootloader.bin` | Bootloader, which starts the recovery app when the encoder is held for two seconds at power on |
+| `0x8000` | `ats-mini.ino.partitions.bin` | Partition table |
+| `0xe000` | `boot_app0.bin` | Firmware slot selection, set to the first slot |
+| `0x10000` | `ats-mini.ino.bin` | Firmware, first slot (2.375 MB) |
+| `0x4d0000` | `recovery.bin` | Recovery app (1.5 MB) |
+
+`ats-mini.ino.merged.bin` holds all of them in one image to write at `0x0`, as web flashers do; it erases the settings and memories too. Writing the files one by one at their offsets keeps the settings and memories. The station lists, the DX Watch log, the splash image and the patches are erased the first time the new layout is used, as their partition moves: download the station list again afterwards.
+
 ## Update over Wi-Fi
 
 To download the latest release, connect the receiver to the internet over Wi-Fi and make sure its date and time are correct.
 
-- On the receiver, open **Settings → Update FW**. Choose **Check** to see the available version, or **Update** to install it.
-- In the web interface, open **Update**, select **Check for updates**, then press **Update**. Use the login and password set on the Wi-Fi page, if configured.
+- On the receiver, open **Settings → Update FW**. Choose **Check** to see the available version, or **Update** to read the notes of a newer release and install it.
+- In the web interface, open **Update**, select **Check for updates**, read the notes of the release found, then press **Update**. Use the login and password set on the Wi-Fi page, if configured.
+
+Both offer an **update channel**: releases only, or betas as well. To go back to the version installed before the last update, use **Settings → Update FW → Previous FW** or the [safe mode](manual.md#safe-mode).
 
 The matching firmware is selected automatically. If that version is already installed, the receiver shows "Already up to date".
 

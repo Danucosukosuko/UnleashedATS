@@ -7,6 +7,8 @@
 #include "Draw.h"
 #include "AltFreq.h"
 #include "Debug.h"
+#include "Notes.h"
+#include "Game.h"
 
 #define PEAK_HOLD_TIME  1500  // Time the S-meter peak marker stays put (msecs)
 #define PEAK_DECAY_TIME   50  // Time for the peak marker to fall by 1dB (msecs)
@@ -537,6 +539,10 @@ void drawScreen()
 
   // Clear screen buffer
   spr.fillSprite(TH.bg);
+
+  // Release notes and the game take the whole screen
+  if(currentCmd==CMD_OTANOTES) { notesDraw(); return; }
+  if(currentCmd==CMD_GAME) { gameDraw(); return; }
 
   // The debug live information takes the whole screen
   if(currentCmd==CMD_DEBUG && debugInfoView)

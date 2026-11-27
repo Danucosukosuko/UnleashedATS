@@ -80,7 +80,7 @@ The menu can be invoked by clicking the encoder button and is closed automatical
 * **Sleep Timer** - Automatic sleep interval in seconds (Off - disabled).
 * **Sleep Mode** - Locked - lock the encoder rotation during sleep; Unlocked - allow tuning the frequency in sleep mode; CPU Sleep - the maximum power saving mode. With the display being on, default brightness, and Wi-Fi the power consumption is about 170mA, without Wi-Fi 100mA, Locked/Unlocked modes draw about 70mA, CPU sleep mode draws about 40mA.
 * **Off Timer** - Short press the menu entry to shut down immediately into deep sleep, or click to adjust the timer (5–240 minutes, in 5-minute steps). While adjusting, turn the encoder to start or restart the timer; short press to disable it (Off). The remaining time alternates with the date and time in the info panel. The timer works during sleep and restarts on each power-up. After shutdown, cycle the power switch or press reset to restart the receiver. This is not a true power-off state: the receiver still draws some current.
-* **Theme** - Color theme.
+* **Theme** - Color theme. Themes made in the web [theme editor](#theme-editor) are listed after the built-in ones, and built-in themes hidden there are left out.
 * **UI Layout** - Alternative UI layouts. For now there is just one alternative UI with large S-meter and S/N-meter.
 * **Zoom Menu** - Display the currently selected menu item using a larger font (accessibility option).
 * **Scroll Dir.** - Menu scroll direction for clockwise encoder turn.
@@ -94,7 +94,12 @@ The menu can be invoked by clicking the encoder button and is closed automatical
 * **DSP Patches** - Select **Default** or an uploaded AM/SSB patch set. Manage these experimental patches on the web interface's **Patches** page.
 * **Load EiBi** - download the EiBi [schedule](#schedule) (requires Wi-Fi internet connection).
 * **Load Stations** - download the FM station list of a country (requires Wi-Fi internet connection and a set clock). Pick the region, then the country; countries already on the receiver are marked with `*`. A new country replaces the previous one. Listed stations are named on screen when they send no RDS.
-* **Update FW** - **Check** shows the available firmware version; **Update** installs it (requires a Wi-Fi internet connection). See [updating over Wi-Fi](flash.md#update-over-wi-fi).
+* **Update FW** - Firmware updates over Wi-Fi (requires an internet connection). See [updating over Wi-Fi](flash.md#update-over-wi-fi).
+  * **Check** shows the version available.
+  * **Update** opens the notes of a newer release: rotate to read them, then pick **Install** or **Cancel** at the end. A click while reading jumps to the choices.
+  * **Channel** chooses between **Stable**, releases only, and **Beta**, which also offers the betas published before a release. Betas get the new features first and may still have rough edges.
+  * **Previous FW** starts the firmware kept from before the last update, after a second click to confirm. The receiver keeps two firmware slots, and an update always goes to the one not in use, so the version before it stays there until the next update. Going back does not change the settings or memories.
+  * **Recovery** restarts into the [recovery app](#recovery-app).
 * **USB Port** - USB serial mode: Off (default), [Ad hoc](remote.md#ad-hoc-protocol), or [CAT TS-480](remote.md#kenwood-cat-protocol). The selected protocol accepts [remote control](remote.md) commands over the USB serial port.
 * **TCP Port** - TCP control mode: Off (default), [Ad hoc](remote.md#ad-hoc-protocol), or [CAT TS-480](remote.md#kenwood-cat-protocol). One client can use the selected [remote control](remote.md#tcp-over-wi-fi) protocol over Wi-Fi on port 60000. Wi-Fi must be enabled separately.
 * **Bluetooth** - Bluetooth LE mode: Off (default), [Ad hoc](remote.md#ad-hoc-protocol), [CAT TS-480](remote.md#kenwood-cat-protocol), HID, or Unpair All. Ad hoc and CAT TS-480 expose the selected [remote control](remote.md) protocol over BLE. HID makes the receiver act as a BLE HID central and connect to supported Bluetooth remotes/keyboards so their buttons can control tuning and menu actions. Unpair All clears all saved Bluetooth bonds and then switches Bluetooth to Off. WARNING: it is not recommended to enable both Bluetooth and Wi-Fi at the same time (the receiver might become unstable).
@@ -146,7 +151,18 @@ The `Wi-Fi` page lets you select the Wi-Fi mode, configure up to three access po
 
 The `Remote` page (`/remote`) is an FM-DX style control panel: frequency, signal history, RDS PS, PI, PTY and RadioText, the AF and EON lists, band buttons, seek and step, presets kept in the browser and an RDS logger. It uses the same login as the other pages. To listen to the audio over the network as well, use the [PC companion](https://github.com/Danucosukosuko/UnleashedATS-Webserver).
 
-Firmware updates are available through **Settings → Update FW** or the web interface's **Update** page. See [updating over Wi-Fi](flash.md#update-over-wi-fi) for instructions.
+Firmware updates are available through **Settings → Update FW** or the web interface's **Update** page, which also shows the notes of the release found and lets you change the update channel. See [updating over Wi-Fi](flash.md#update-over-wi-fi) for instructions.
+
+### Theme editor
+
+The `Themes` page (`/themes`) lists the built-in and custom themes, each with a few of its colors.
+
+* **Use** switches the receiver to that theme.
+* **Copy** opens the editor on a copy of a theme, **Edit** opens a custom theme itself. Every color of the screen can be changed, grouped by the part of the screen it paints. With **Live preview on the receiver** on, the receiver shows each change as you make it, without saving it.
+* **Save** stores the changes to the custom theme being edited, **Save as new** stores them as a new custom theme. Up to eight custom themes can be kept.
+* **Delete** removes a custom theme. Built-in themes cannot be deleted, but **Hide** takes them off the list in *Settings → Theme*, and **Show** puts them back.
+
+Custom themes are kept with the settings, and survive firmware updates.
 
 On the **Patches** page, upload and select experimental AM/SSB patches (see [discussion #377](https://github.com/esp32-si4732/ats-mini/discussions/377)):
 
@@ -167,14 +183,43 @@ The receiver can download the [EiBi](http://eibispace.de/dx/eibi.txt) shortwave 
 * Once set up, the receiver will display station names currently broadcasting on specific frequencies (only scheduled times are considered; days of the week are ignored for now).
 * You can quickly jump between stations using the Seek mode (marked by a clock icon). To switch between modes, short press the encoder while in Seek mode.
 
-## Reset
+## Recovery app
 
-To reset the receiver settings (current band, frequency, favorite stations, downloaded schedule, etc):
+UnleashedATS installs a small recovery app in a flash partition of its own, which firmware updates never touch, so it is there whatever state the firmware is in. To start it, hold the encoder while switching the receiver on until the amber *RECOVERY* screen appears (about two seconds). It also starts by itself when no firmware on the receiver can start, and when the firmware crashes three times in a row before getting to run. *Settings → Update FW → Recovery* and the safe mode restart into it as well.
 
-1. Switch off the receiver
-2. Press and hold the encoder
-3. Turn on the receiver
-4. Release the encoder after the `Resetting Preferences` message appears
+Rotate to choose and click to run; options that erase something ask for a second click.
+
+* **Start the firmware** - Start the firmware selected for booting.
+* **Slot 1**, **Slot 2** - The two firmware slots, with the version in each and *(boots)* next to the one selected. Click one to make it the one that boots and start it.
+* **Install from browser** - Shows how to install a firmware file from a phone or a computer: join the `ATS-Mini Recovery` Wi-Fi network (no password), open `http://10.1.1.1` and upload the `-ota.bin` or `ats-mini.ino.bin` file of your variant. Click to go back.
+* **Install latest** - Download and install the latest release over one of the Wi-Fi networks saved in the firmware.
+* **Reset settings**, **Erase memories**, **Forget Wi-Fi**, **Erase files**, **Factory reset** - The same as in the [safe mode](#safe-mode).
+* **USB flashing** - Restart into the ESP32 download mode for esptool or a web flasher, with a screen saying so.
+
+The recovery app also has a **web page** of its own, available as soon as it starts: on the `ATS-Mini Recovery` network at `http://10.1.1.1`, and on your own network at the address shown at the top of the screen when it connects to one of the saved networks. It asks for the login of the web interface when one is set. The page shows both firmware slots and starts either of them, uploads and installs a firmware file with a progress bar, installs the latest release, erases each kind of data, and restarts into USB flashing mode.
+
+A firmware is always installed into the slot that does not boot, so the one there before stays as the way back.
+
+The recovery app comes with a [USB flash](flash.md) of the full firmware; Wi-Fi updates keep the receiver as it is. It is not available on the LilyGO T-Embed, where the encoder button is the ESP32 boot strapping pin.
+
+## Safe mode
+
+Hold the encoder while switching the receiver on, and release it when the *Safe mode* screen appears. With the recovery app installed, release it within two seconds, before the recovery app takes over; the safe mode is also where the receiver goes after crashing three times in a row at startup when there is no recovery app. Rotate to choose an option and click to run it; the options that erase something ask for a second click, and rotating cancels. The line at the bottom says what the selected option does.
+
+* **Continue** - Start the receiver normally.
+* **Reset settings** - Back to the default settings, bands and debug options. Memories, station lists, the DX Watch log, Wi-Fi networks and custom themes stay.
+* **Erase memories** - Clear the memory slots.
+* **Forget Wi-Fi** - Clear the saved networks and the login of the web interface.
+* **Erase files** - Erase the station lists, the DX Watch log, the splash image and the uploaded patches.
+* **Factory reset** - Erase everything, as on a new receiver. This is what holding the encoder at power on did before.
+* **Previous firmware** - Start the firmware kept from before the last update. Its version is shown next to it, or *none kept* when there is none.
+* **Recovery app** - Restart into the [recovery app](#recovery-app), when it is installed.
+* **Recovery Wi-Fi** - Start the receiver with Wi-Fi on for this session, both the `ATS-Mini` access point and the saved networks. Open `http://10.1.1.1/update` (or the address the receiver gets on your network) to install a firmware file from the browser.
+* **Reinstall latest** - Start the receiver and install the latest release again as soon as it is online over a saved network.
+* **USB flashing** - Restart into the ESP32 download mode, so that esptool or a web flasher can write the firmware without holding the BOOT button. Switch the receiver off and on to leave it.
+* **Restart** - Restart the receiver.
+
+A new firmware is also kept on probation until it has started: if an update does not get as far as the main screen, the next reset brings the previous firmware back by itself.
 
 
 ## Bands table

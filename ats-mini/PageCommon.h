@@ -42,6 +42,7 @@ static void webNavigation(String &out, const char *activePage)
     {"Remote", "/remote"},
     {"Memory", "/memory"},
     {"Config", "/config"},
+    {"Themes", "/themes"},
     {"Wi-Fi", "/wifi"},
     {"Update", "/update"},
     {"Patches", "/patches"},

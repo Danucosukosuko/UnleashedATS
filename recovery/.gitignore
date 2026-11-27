@@ -1,0 +1,6 @@
+# Copied from ../ats-mini at build time
+Display.h
+Rotary.h
+Rotary.cpp
+partitions.csv
+build/

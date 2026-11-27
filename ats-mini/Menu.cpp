@@ -14,6 +14,9 @@
 #include "Stations.h"
 #include "DxWatch.h"
 #include "Debug.h"
+#include "Notes.h"
+#include "Game.h"
+#include "Recovery.h"
 #include <LittleFS.h>
 
 #include <time.h>
@@ -191,7 +194,59 @@ static const char *menu[] =
 
 
 static uint8_t updateFwIdx = 0;
-static const char *const updateFwActions[] = {"Check", "Update"};
+static const char *const updateFwActions[] = {"Check", "Update", "Channel", "Previous FW", "Recovery"};
+static bool updateFwArmed = false;      // Previous FW waits for a second click
+static char updateFwPrevious[32] = "";
+
+static const char *updateFwLabel(int i)
+{
+  if(i==2) return(otaChannel==OTA_BETA? "Beta" : "Stable");
+  if(i==3 && updateFwArmed) return("Confirm?");
+  return(updateFwActions[i]);
+}
+
+static void clickUpdateFw()
+{
+  switch(updateFwIdx)
+  {
+    case 0: otaRequestLatest(false); break;
+    // The notes of a newer release open before it is installed
+    case 1: otaRequestReview(); break;
+    case 2:
+      otaChannel = otaChannel==OTA_BETA? OTA_STABLE : OTA_BETA;
+      prefsRequestSave(SAVE_SETTINGS);
+      statusShow("Update channel", otaChannel==OTA_BETA? "Releases and betas" : "Releases only");
+      break;
+    case 3:
+      if(!updateFwArmed)
+      {
+        if(!otaPreviousFirmware(updateFwPrevious, sizeof(updateFwPrevious)))
+        {
+          statusShow("Previous firmware", "None kept on this receiver");
+          break;
+        }
+        updateFwArmed = true;
+        statusShow("Click again to start", updateFwPrevious, 4000);
+        break;
+      }
+      updateFwArmed = false;
+      statusShow("Starting", updateFwPrevious, 0);
+      drawScreen();
+      statusShow("Previous firmware", otaBootPrevious());
+      break;
+    case 4:
+      // The recovery app, without holding the encoder at power on
+      if(!recoveryAvailable())
+      {
+        statusShow("Recovery app", "Not installed: flash over USB");
+        break;
+      }
+      statusShow("Recovery app", "Restarting into it", 0);
+      drawScreen();
+      recoveryRestart();
+      break;
+  }
+}
 
 int8_t settingsIdx = MENU_BRIGHTNESS;
 
@@ -306,6 +361,7 @@ static inline int wrap_range(int v, int enc, int vMin, int vMax);
 // Debug menu (debug mode only)
 //
 static uint8_t aboutPresses = 0;  // Short presses on the About screen
+static int16_t aboutPastEnd = 0;  // Steps rotated on past the last About page
 
 enum DebugItem
 {
@@ -1393,7 +1449,7 @@ static void clickEonList(bool shortPress)
 
 static void doTheme(int16_t enc)
 {
-  themeIdx = wrap_range(themeIdx, enc, 0, getTotalThemes() - 1);
+  themeSelect(wrap_range(themeIdx, enc, 0, getTotalThemes() - 1));
   prefsRequestSave(SAVE_SETTINGS);
 }
 
@@ -1650,6 +1706,19 @@ static void doScrollDir(int16_t enc)
 uint8_t doAbout(int16_t enc)
 {
   static uint8_t aboutScreen = 0;
+
+  // Rotating on past the last page eight times opens the game
+  if(aboutScreen == 2 && enc > 0)
+  {
+    aboutPastEnd += enc;
+    if(aboutPastEnd >= 8)
+    {
+      aboutPastEnd = 0;
+      gameStart();
+    }
+  }
+  else if(enc < 0) aboutPastEnd = 0;
+
   aboutScreen = clamp_range(aboutScreen, enc, 0, 2);
   return aboutScreen;
 }
@@ -2106,6 +2175,7 @@ static void clickSettings(int cmd, bool shortPress)
     case MENU_DSP_PATCHES: currentCmd = CMD_DSP_PATCHES; break;
     case MENU_ABOUT:
       aboutPresses = 0;
+      aboutPastEnd = 0;
       currentCmd = CMD_ABOUT;
       break;
     case MENU_DEBUG:
@@ -2115,6 +2185,7 @@ static void clickSettings(int cmd, bool shortPress)
       break;
     case MENU_UPDATEFW:
       updateFwIdx = 0;
+      updateFwArmed = false;
       currentCmd = CMD_UPDATEFW;
       break;
 
@@ -2201,7 +2272,12 @@ bool doSideBar(uint16_t cmd, int16_t enc, int16_t enca)
     case CMD_UTCOFFSET:  doUTCOffset(scrollDirection * enc);break;
     case CMD_DATETIME:   doDateTime(enc);break;
     case CMD_SQUELCH:    doSquelch(enca);break;
-    case CMD_UPDATEFW:   updateFwIdx = wrap_range(updateFwIdx, scrollDirection * enc, 0, LAST_ITEM(updateFwActions));break;
+    case CMD_UPDATEFW:
+      updateFwIdx = wrap_range(updateFwIdx, scrollDirection * enc, 0, LAST_ITEM(updateFwActions));
+      updateFwArmed = false;
+      break;
+    case CMD_OTANOTES:   notesRotate(enc);break;
+    case CMD_GAME:       gameRotate(enca);break;
     case CMD_ABOUT:      doAbout(enc);break;
     default:             return(false);
   }
@@ -2216,7 +2292,9 @@ bool clickHandler(uint16_t cmd, bool shortPress)
   {
     case CMD_MENU:     clickMenu(menuIdx, shortPress);break;
     case CMD_SETTINGS: clickSettings(settingsIdx, shortPress);break;
-    case CMD_UPDATEFW: otaRequestLatest(updateFwIdx == 1);break;
+    case CMD_UPDATEFW: clickUpdateFw();break;
+    case CMD_OTANOTES: notesClick();break;
+    case CMD_GAME:     gameClick();break;
     case CMD_MEMORY:   clickMemory(memoryIdx, shortPress);break;
     case CMD_BLEMODE:  clickBleMode(bleModeMenuIdx, shortPress);break;
     case CMD_WIFIMODE: clickWiFiMode(wifiModeIdx, shortPress);break;
@@ -2606,14 +2684,14 @@ static void drawUpdateFW(int x, int y, int sx)
   {
     if(i == updateFwIdx)
     {
-      drawZoomedMenu(updateFwActions[i]);
+      drawZoomedMenu(i==2? "Channel" : updateFwLabel(i));
       spr.setTextColor(TH.menu_hl_text, TH.menu_hl_bg);
     }
     else
       spr.setTextColor(TH.menu_item);
 
     spr.setTextDatum(MC_DATUM);
-    spr.drawString(updateFwActions[i], 40+x+(sx/2), 64+y+((i-updateFwIdx)*16), FONT_SMALL);
+    spr.drawString(updateFwLabel(i), 40+x+(sx/2), 64+y+((i-updateFwIdx)*16), FONT_SMALL);
   }
 }
 
@@ -2644,14 +2722,14 @@ static void drawTheme(int x, int y, int sx)
   for(int i=-2 ; i<3 ; i++)
   {
     if(i==0) {
-      drawZoomedMenu(theme[abs((themeIdx+count+i)%count)].name);
+      drawZoomedMenu(themeName(abs((themeIdx+count+i)%count)));
       spr.setTextColor(TH.menu_hl_text, TH.menu_hl_bg);
     } else {
       spr.setTextColor(TH.menu_item);
     }
 
     spr.setTextDatum(MC_DATUM);
-    spr.drawString(theme[abs((themeIdx+count+i)%count)].name, 40+x+(sx/2), 64+y+(i*16), FONT_SMALL);
+    spr.drawString(themeName(abs((themeIdx+count+i)%count)), 40+x+(sx/2), 64+y+(i*16), FONT_SMALL);
   }
 }
 

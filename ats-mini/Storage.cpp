@@ -1,6 +1,7 @@
 #include "Common.h"
 #include "Storage.h"
 #include "Themes.h"
+#include "Ota.h"
 #include "Utils.h"
 #include "Menu.h"
 #include "Memories.h"
@@ -205,7 +206,7 @@ void prefsSave(uint32_t items)
     prefs.putUChar("SsbSoftMute", SsbSoftMuteIdx); // SSB soft mute
     prefs.putUShort("Sleep",      currentSleep);   // Sleep delay
     prefs.putUShort("OffTimer", offTimerMinutes);
-    prefs.putUChar("Theme",       themeIdx);       // Color theme
+    prefs.putUChar("Theme",       themeId(themeIdx)); // Color theme, by its stable id
     prefs.putUChar("RDSMode",     rdsModeIdx);     // RDS mode
     prefs.putUChar("SleepMode",   sleepModeIdx);   // Sleep mode
     prefs.putUChar("ZoomMenu",    zoomMenu);       // TRUE: Zoom menu
@@ -221,6 +222,7 @@ void prefsSave(uint32_t items)
     prefs.putUChar("FmStereo",    fmStereoIdx);    // FM stereo mode
     prefs.putBool("DXMode",       dxMode);         // Weak signal listening
     prefs.putBool("BattPct",      batteryShowPercent); // Battery as a percentage
+    prefs.putUChar("UpdChan",     otaChannel);     // Releases only, or betas too
     prefs.putBool("AudioClamp",   audioClamp);     // Hardware audio clamp present
     prefs.putBool("AutoAntCap", autoAntennaCapacitor);
     prefs.putUChar("DSPPatchset", dspPatchesIdx);  // DSP patches
@@ -296,7 +298,7 @@ bool prefsLoad(uint32_t items)
     SsbSoftMuteIdx = prefs.getUChar("SsbSoftMute", SsbSoftMuteIdx); // SSB soft mute
     currentSleep   = prefs.getUShort("Sleep", currentSleep);    // Sleep delay
     offTimerMinutes = prefs.getUShort("OffTimer", 0);
-    themeIdx       = prefs.getUChar("Theme", themeIdx);         // Color theme
+    themeSelectId(prefs.getUChar("Theme", themeId(themeIdx))); // Color theme
     rdsModeIdx     = prefs.getUChar("RDSMode", rdsModeIdx);     // RDS mode
     sleepModeIdx   = prefs.getUChar("SleepMode", sleepModeIdx); // Sleep mode
     zoomMenu       = prefs.getUChar("ZoomMenu", zoomMenu);      // TRUE: Zoom menu
@@ -316,6 +318,7 @@ bool prefsLoad(uint32_t items)
     fmStereoIdx    = prefs.getUChar("FmStereo", fmStereoIdx);   // FM stereo mode
     dxMode         = prefs.getBool("DXMode", false);            // Weak signal listening
     batteryShowPercent = prefs.getBool("BattPct", false);       // Battery as a percentage
+    otaChannel     = prefs.getUChar("UpdChan", OTA_STABLE) ? OTA_BETA : OTA_STABLE; // Update channel
     audioClamp     = prefs.getBool("AudioClamp", true);        // Hardware audio clamp present
     autoAntennaCapacitor = prefs.getBool("AutoAntCap", false);
     dspPatchesIdx  = prefs.getUChar("DSPPatchset", DSP_PATCHES_DEFAULT); // Uploaded patch set

@@ -1,6 +1,11 @@
 #include "Common.h"
 #include "Themes.h"
 #include "Draw.h"
+#include "Storage.h"
+
+#include <Preferences.h>
+#include <mutex>
+#include <stddef.h>
 
 ColorTheme theme[] =
 {
@@ -533,8 +538,323 @@ ColorTheme theme[] =
   },
 };
 
+#define THEME_COLORS ((sizeof(ColorTheme) - offsetof(ColorTheme, bg)) / sizeof(uint16_t))
+static_assert(THEME_COLORS == 44, "Update the color names below with the theme fields");
+
+static const char *const colorNames[THEME_COLORS] =
+{
+  "bg", "text", "text_muted", "text_warn",
+  "smeter_icon", "smeter_bar", "smeter_bar_plus", "smeter_bar_empty",
+  "save_icon", "stereo_icon", "rf_icon", "rf_icon_conn",
+  "batt_voltage", "batt_border", "batt_full", "batt_low", "batt_charge", "batt_icon",
+  "band_text", "mode_text", "mode_border",
+  "box_bg", "box_border", "box_text", "box_off_bg", "box_off_text",
+  "menu_bg", "menu_border", "menu_hdr", "menu_item", "menu_hl_bg", "menu_hl_text", "menu_param",
+  "freq_text", "funit_text", "freq_hl", "freq_hl_sel",
+  "rds_text", "scale_text", "scale_pointer", "scale_line",
+  "scan_grid", "scan_snr", "scan_rssi",
+};
+
+static constexpr int builtinCount = ITEM_COUNT(theme);
+static_assert(builtinCount <= 32, "Hidden built-in themes are kept as a 32 bit mask");
+
+typedef struct __attribute__((packed))
+{
+  char name[THEME_NAME_LEN + 1];
+  uint16_t colors[THEME_COLORS];
+} ThemeBlob;
+
+static ColorTheme custom[THEME_CUSTOM_MAX];
+static char customName[THEME_CUSTOM_MAX][THEME_NAME_LEN + 1];
+static bool customUsed[THEME_CUSTOM_MAX];
+static uint32_t hiddenMask = 0;
+
+static ColorTheme *listed[builtinCount + THEME_CUSTOM_MAX] = { &theme[0] };
+static int16_t listedId[builtinCount + THEME_CUSTOM_MAX] = { 0 };
+static int listedCount = 1;
+
+static ColorTheme preview;
+
 uint8_t themeIdx = 0;
-int getTotalThemes() { return(ITEM_COUNT(theme)); }
+ColorTheme *currentTheme = &theme[0];
+
+static uint16_t *colorsOf(ColorTheme *t)
+{
+  return(reinterpret_cast<uint16_t *>(reinterpret_cast<uint8_t *>(t) + offsetof(ColorTheme, bg)));
+}
+
+int getTotalThemes() { return(listedCount); }
+const char *themeName(int idx) { return(listed[idx>=0 && idx<listedCount? idx : 0]->name); }
+int themeId(int idx) { return(listedId[idx>=0 && idx<listedCount? idx : 0]); }
+int themeColorCount() { return(THEME_COLORS); }
+const char *themeColorName(int idx) { return(idx>=0 && idx<(int)THEME_COLORS? colorNames[idx] : ""); }
+
+void themeSelect(int idx)
+{
+  themeIdx = idx>=0 && idx<listedCount? idx : 0;
+  currentTheme = listed[themeIdx];
+}
+
+void themeSelectId(int id)
+{
+  for(int i=0 ; i<listedCount ; i++)
+    if(listedId[i]==id) { themeSelect(i); return; }
+  themeSelect(0);
+}
+
+static void rebuild()
+{
+  int id = themeId(themeIdx);
+
+  // At least one theme always stays listed
+  if((hiddenMask & ((1ULL << builtinCount) - 1)) == ((1ULL << builtinCount) - 1)) hiddenMask &= ~1UL;
+
+  listedCount = 0;
+  for(int i=0 ; i<builtinCount ; i++)
+    if(!(hiddenMask & (1UL << i)))
+    {
+      listed[listedCount] = &theme[i];
+      listedId[listedCount++] = i;
+    }
+  for(int k=0 ; k<THEME_CUSTOM_MAX ; k++)
+    if(customUsed[k])
+    {
+      listed[listedCount] = &custom[k];
+      listedId[listedCount++] = THEME_CUSTOM_ID + k;
+    }
+
+  themeSelectId(id);
+}
+
+void themesInit()
+{
+  Preferences store;
+
+  memset(customUsed, 0, sizeof(customUsed));
+  hiddenMask = 0;
+
+  if(store.begin("themes", true, STORAGE_PARTITION))
+  {
+    hiddenMask = store.getUInt("Hidden", 0);
+    for(int k=0 ; k<THEME_CUSTOM_MAX ; k++)
+    {
+      char key[8];
+      ThemeBlob blob;
+      sprintf(key, "C%d", k);
+      if(store.getBytes(key, &blob, sizeof(blob)) != sizeof(blob)) continue;
+      blob.name[THEME_NAME_LEN] = '\0';
+      strcpy(customName[k], blob.name);
+      custom[k].name = customName[k];
+      memcpy(colorsOf(&custom[k]), blob.colors, sizeof(blob.colors));
+      customUsed[k] = true;
+    }
+    store.end();
+  }
+
+  rebuild();
+}
+
+static void storeCustom(int k)
+{
+  Preferences store;
+  char key[8];
+  sprintf(key, "C%d", k);
+  if(!store.begin("themes", false, STORAGE_PARTITION)) return;
+  if(customUsed[k])
+  {
+    ThemeBlob blob;
+    memset(&blob, 0, sizeof(blob));
+    strncpy(blob.name, customName[k], THEME_NAME_LEN);
+    memcpy(blob.colors, colorsOf(&custom[k]), sizeof(blob.colors));
+    store.putBytes(key, &blob, sizeof(blob));
+  }
+  else store.remove(key);
+  store.end();
+}
+
+static void storeHidden()
+{
+  Preferences store;
+  if(!store.begin("themes", false, STORAGE_PARTITION)) return;
+  store.putUInt("Hidden", hiddenMask);
+  store.end();
+}
+
+//
+// Requests from the web theme editor
+//
+static std::mutex themeMutex;
+static struct
+{
+  bool pending;
+  uint8_t op;
+  int16_t id;
+  bool hasColors;
+  char name[THEME_NAME_LEN + 1];
+  uint16_t colors[THEME_COLORS];
+} request;
+static const char *lastMessage = "";
+
+bool themesRequest(uint8_t op, int id, const char *name, const uint16_t *colors)
+{
+  std::lock_guard<std::mutex> lock(themeMutex);
+  if(request.pending) return(false);
+
+  request.op = op;
+  request.id = id;
+  request.hasColors = colors != nullptr;
+  if(colors) memcpy(request.colors, colors, sizeof(request.colors));
+
+  // Printable ASCII only, the display fonts have nothing else
+  int n = 0;
+  for(const char *p = name? name : "" ; *p && n<THEME_NAME_LEN ; p++)
+    if(*p>=' ' && *p<='~') request.name[n++] = *p;
+  while(n && request.name[n-1]==' ') n--;
+  request.name[n] = '\0';
+
+  request.pending = true;
+  return(true);
+}
+
+bool themesTick()
+{
+  std::lock_guard<std::mutex> lock(themeMutex);
+  if(!request.pending) return(false);
+  request.pending = false;
+
+  int id = request.id;
+  bool isCustom = id>=THEME_CUSTOM_ID && id<THEME_CUSTOM_ID+THEME_CUSTOM_MAX && customUsed[id-THEME_CUSTOM_ID];
+  bool isBuiltin = id>=0 && id<builtinCount;
+
+  switch(request.op)
+  {
+    case THEME_OP_SELECT:
+      themeSelectId(id);
+      prefsRequestSave(SAVE_SETTINGS);
+      lastMessage = "Theme selected.";
+      break;
+
+    case THEME_OP_SAVE:
+    {
+      if(!request.hasColors) { lastMessage = "No colors given."; break; }
+      int k = isCustom? id - THEME_CUSTOM_ID : -1;
+      for(int i=0 ; k<0 && i<THEME_CUSTOM_MAX ; i++)
+        if(!customUsed[i]) k = i;
+      if(k<0) { lastMessage = "All custom theme slots are taken, delete one first."; break; }
+
+      if(request.name[0]) strcpy(customName[k], request.name);
+      else sprintf(customName[k], "Custom %d", k + 1);
+      custom[k].name = customName[k];
+      memcpy(colorsOf(&custom[k]), request.colors, sizeof(request.colors));
+      customUsed[k] = true;
+      storeCustom(k);
+      rebuild();
+      themeSelectId(THEME_CUSTOM_ID + k);
+      prefsRequestSave(SAVE_SETTINGS);
+      lastMessage = "Theme saved.";
+      break;
+    }
+
+    case THEME_OP_DELETE:
+      if(!isCustom) { lastMessage = "Only custom themes can be deleted, built-in ones can be hidden."; break; }
+      customUsed[id - THEME_CUSTOM_ID] = false;
+      storeCustom(id - THEME_CUSTOM_ID);
+      rebuild();
+      prefsRequestSave(SAVE_SETTINGS);
+      lastMessage = "Theme deleted.";
+      break;
+
+    case THEME_OP_HIDE:
+    case THEME_OP_SHOW:
+      if(!isBuiltin) { lastMessage = "Unknown built-in theme."; break; }
+      if(request.op==THEME_OP_HIDE) hiddenMask |= 1UL << id;
+      else hiddenMask &= ~(1UL << id);
+      rebuild();
+      storeHidden();
+      prefsRequestSave(SAVE_SETTINGS);
+      lastMessage = request.op==THEME_OP_HIDE? "Theme hidden." : "Theme listed again.";
+      break;
+
+    case THEME_OP_PREVIEW:
+      if(!request.hasColors) break;
+      preview.name = "Preview";
+      memcpy(colorsOf(&preview), request.colors, sizeof(request.colors));
+      currentTheme = &preview;
+      lastMessage = "Previewing on the receiver.";
+      break;
+
+    case THEME_OP_CANCEL:
+      themeSelect(themeIdx);
+      lastMessage = "Preview closed.";
+      break;
+  }
+
+  return(true);
+}
+
+static void writeColor(Print &out, uint16_t c)
+{
+  // RGB565 to #rrggbb, rounding each channel to 8 bits
+  unsigned r = (((c >> 11) & 31) * 527 + 23) >> 6;
+  unsigned g = (((c >> 5) & 63) * 259 + 33) >> 6;
+  unsigned b = ((c & 31) * 527 + 23) >> 6;
+  out.printf("\"#%02x%02x%02x\"", r, g, b);
+}
+
+static void writeJsonString(Print &out, const char *text)
+{
+  out.print('"');
+  for(const char *p = text ; *p ; p++)
+  {
+    if(*p=='"' || *p=='\\') out.print('\\');
+    if((uint8_t)*p >= ' ') out.print(*p);
+  }
+  out.print('"');
+}
+
+static void writeTheme(Print &out, ColorTheme *t, int id, bool builtin, bool hidden)
+{
+  out.printf("{\"id\":%d,\"name\":", id);
+  writeJsonString(out, t->name);
+  out.printf(",\"builtin\":%s,\"hidden\":%s,\"colors\":[", builtin? "true" : "false", hidden? "true" : "false");
+  const uint16_t *c = colorsOf(t);
+  for(size_t i=0 ; i<THEME_COLORS ; i++)
+  {
+    if(i) out.print(',');
+    writeColor(out, c[i]);
+  }
+  out.print("]}");
+}
+
+void themesWriteJson(Print &out)
+{
+  std::lock_guard<std::mutex> lock(themeMutex);
+
+  out.printf("{\"current\":%d,\"preview\":%s,\"slots\":%d,\"message\":", themeId(themeIdx),
+             currentTheme==&preview? "true" : "false", THEME_CUSTOM_MAX);
+  writeJsonString(out, lastMessage);
+  out.print(",\"fields\":[");
+  for(size_t i=0 ; i<THEME_COLORS ; i++)
+  {
+    if(i) out.print(',');
+    writeJsonString(out, colorNames[i]);
+  }
+  out.print("],\"themes\":[");
+  bool first = true;
+  for(int i=0 ; i<builtinCount ; i++)
+  {
+    if(!first) out.print(',');
+    writeTheme(out, &theme[i], i, true, hiddenMask & (1UL << i));
+    first = false;
+  }
+  for(int k=0 ; k<THEME_CUSTOM_MAX ; k++)
+    if(customUsed[k])
+    {
+      out.print(',');
+      writeTheme(out, &custom[k], THEME_CUSTOM_ID + k, false, false);
+    }
+  out.print("]}");
+}
 
 //
 // Turn theme editor on (1) or off (0), or get current status (2)

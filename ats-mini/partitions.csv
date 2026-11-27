@@ -1,8 +1,13 @@
 # Name,   Type, SubType,  Offset,   Size,     Flags
+# The recovery app sits in the "test" partition: the UnleashedATS bootloader
+# starts it when the encoder is held for two seconds at power on.
+# nvs and settings keep their places, so settings and memories survive the
+# change from the earlier layout; littlefs moves and is formatted again.
 nvs,      data, nvs,      0x9000,   0x5000,
 otadata,  data, ota,      0xe000,   0x2000,
-app0,     app,  ota_0,    0x10000,  0x300000,
-app1,     app,  ota_1,    0x310000, 0x300000,
-littlefs, data, littlefs, 0x610000, 0x1d0000,
+app0,     app,  ota_0,    0x10000,  0x260000,
+app1,     app,  ota_1,    0x270000, 0x260000,
+recovery, app,  test,     0x4d0000, 0x180000,
+littlefs, data, littlefs, 0x650000, 0x190000,
 settings, data, nvs,      0x7e0000, 0x10000,
 coredump, data, coredump, 0x7f0000, 0x10000,

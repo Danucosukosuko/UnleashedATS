@@ -20,6 +20,7 @@
 #include "PageUpdate.h"
 #include "PagePatches.h"
 #include "PageRemote.h"
+#include "PageThemes.h"
 #include "DxWatch.h"
 
 #include <new>
@@ -85,6 +86,36 @@ static struct
   char range[3] = "";
   bool dx = false, mono = false;
 } remoteCmd;
+
+static void webThemeRequest(AsyncWebServerRequest *request)
+{
+  if(!webIsAuthenticated(request)) return request->requestAuthentication();
+
+  static const char *const ops[] = { "select", "save", "delete", "hide", "show", "preview", "cancel" };
+  String op = request->arg("op");
+  int code = -1;
+  for(int i=0 ; i<(int)ITEM_COUNT(ops) ; i++)
+    if(op == ops[i]) code = i;
+  if(code < 0) return request->send(400, "text/plain", "Unknown operation.");
+
+  // Colors come as RGB565 hex words, in the order of the theme fields
+  uint16_t colors[64];
+  int count = 0;
+  String list = request->arg("c");
+  for(const char *p = list.c_str() ; *p && count < (int)ITEM_COUNT(colors) ; )
+  {
+    char *end;
+    colors[count++] = strtoul(p, &end, 16);
+    if(end == p) break;
+    p = *end == ',' ? end + 1 : end;
+  }
+  if(list.length() && count != themeColorCount())
+    return request->send(400, "text/plain", "Wrong number of colors.");
+
+  if(!themesRequest(code, request->arg("id").toInt(), request->arg("name").c_str(), list.length()? colors : nullptr))
+    return request->send(409, "text/plain", "Busy, try again.");
+  request->send(200, "text/plain", "OK");
+}
 
 static void webRemoteCommand(AsyncWebServerRequest *request)
 {
@@ -233,7 +264,7 @@ bool webTick()
     if(rdsModeIdx != configSettings.rds)
       doRDSMode(configSettings.rds - rdsModeIdx);
     if(configSettings.setClock) clockSetEpoch(configSettings.epoch);
-    themeIdx = configSettings.themeIndex;
+    themeSelect(configSettings.themeIndex);
     scrollDirection = configSettings.reverseScroll? -1 : 1;
     zoomMenu = configSettings.zoom;
     setEncoderHalfStep(configSettings.halfStep);
@@ -345,6 +376,22 @@ void webInit()
     request->send(LittleFS, DXWATCH_LOG, "text/csv", true);
   });
 
+  // Theme editor
+  server.on("/themes", HTTP_GET, [] (AsyncWebServerRequest *request) {
+    if(!webIsAuthenticated(request)) return request->requestAuthentication();
+    request->send(200, "text/html", webPage(pageThemes, pageThemesTitle, {{"title", pageThemesTitle}}, {
+      {"navigation", [](String &out) { webNavigation(out, "/themes"); }}
+    }));
+  });
+  server.on("/api/themes", HTTP_GET, [] (AsyncWebServerRequest *request) {
+    if(!webIsAuthenticated(request)) return request->requestAuthentication();
+    AsyncResponseStream *response = request->beginResponseStream("application/json");
+    response->addHeader("Cache-Control", "no-store");
+    themesWriteJson(*response);
+    request->send(response);
+  });
+  server.on("/api/themes", HTTP_POST, webThemeRequest);
+
   server.on("/config", HTTP_ANY, [] (AsyncWebServerRequest *request) {
     if(!webIsAuthenticated(request)) return request->requestAuthentication();
     request->send(200, "text/html", webConfigPage());
@@ -394,7 +441,15 @@ void webInit()
   });
   server.on("/update", HTTP_POST, [](AsyncWebServerRequest *request) {
     if(!webIsAuthenticated(request)) return request->requestAuthentication();
-    if(!otaRequestLatest(request->hasParam("action", true) && request->getParam("action", true)->value() == "install"))
+    String action = request->hasParam("action", true)? request->getParam("action", true)->value() : "";
+    if(action == "beta" || action == "stable")
+    {
+      // The main loop stores the setting
+      otaChannel = action == "beta"? OTA_BETA : OTA_STABLE;
+      prefsRequestSave(SAVE_SETTINGS);
+      return request->redirect("/update");
+    }
+    if(!otaRequestLatest(action == "install"))
       return webUpdatePage(request, {OTA_FAILED, "An update is already in progress."}, 409);
     request->redirect("/update");
   });
@@ -1020,7 +1075,7 @@ const String webConfigPage()
     {"theme_options", [&](String &out) {
       for(int i=0 ; i<getTotalThemes(); i++)
         pageAppend(out, pageConfigThemeOption, {
-          {"value", String(i)}, {"selected", themeIndex==i? "SELECTED" : ""}, {"label", theme[i].name}
+          {"value", String(i)}, {"selected", themeIndex==i? "SELECTED" : ""}, {"label", themeName(i)}
         });
     }},
     {"splash", [](String &out) {
@@ -1067,9 +1122,19 @@ static void webUpdatePage(AsyncWebServerRequest *request, const OtaStatus &statu
     {"title", pageUpdateTitle},
     {"message", status.message},
     {"action", available? "install" : "check"}, {"disabled", busy || complete? "DISABLED" : ""},
-    {"button", available? "Update" : "Check for updates"}, {"refresh", refresh}
+    {"button", available? "Update" : "Check for updates"}, {"refresh", refresh},
+    {"channel", otaChannel==OTA_BETA? "Releases and betas" : "Releases only"},
+    {"switch", otaChannel==OTA_BETA? "stable" : "beta"},
+    {"switchlabel", otaChannel==OTA_BETA? "Releases only" : "Include betas"}
   }, {
-    {"navigation", [](String &out) { webNavigation(out, "/update"); }}
+    {"navigation", [](String &out) { webNavigation(out, "/update"); }},
+    {"notes", [&](String &out) {
+      // What the release found brings, before installing it
+      if(!available || !*otaReleaseNotes()) return;
+      pageAppend(out, R"HTML(<TR><TD><DETAILS OPEN><SUMMARY>What's new in {{tag}}</SUMMARY>)HTML"
+                      R"HTML(<PRE STYLE="white-space: pre-wrap; text-align: left;">{{notes}}</PRE></DETAILS></TD></TR>)HTML",
+                 {{"tag", String(otaReleaseTag())}, {"notes", String(otaReleaseNotes())}});
+    }}
   });
   if(!code) code = status.phase == OTA_FAILED? 400 : 200;
   AsyncWebServerResponse *response = request->beginResponse(code, "text/html", page);

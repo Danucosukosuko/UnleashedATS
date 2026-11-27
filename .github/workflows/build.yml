@@ -6,6 +6,8 @@ on:
       - main
     paths:
       - 'ats-mini/**'
+      - 'recovery/**'
+      - 'tools/bootloader/**'
       - 'changelog/**'
       - 'CHANGELOG.md'
       - '.github/workflows/build.yml'
@@ -17,6 +19,8 @@ on:
     #   - main
     paths:
       - 'ats-mini/**'
+      - 'recovery/**'
+      - 'tools/bootloader/**'
       - 'changelog/**'
       - 'CHANGELOG.md'
       - '.github/workflows/build.yml'
@@ -42,8 +46,36 @@ jobs:
       - name: Run unit tests
         run: make -C ats-mini test
 
+  bootloader:
+    name: build bootloader
+    # The ESP-IDF bootloader with the recovery app option, see tools/bootloader
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    container: espressif/idf:release-v5.5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: "${{ github.event.inputs.revision || github.ref }}"
+      - name: Build the bootloader
+        shell: bash
+        run: |
+          . "$IDF_PATH/export.sh"
+          cd tools/bootloader
+          idf.py set-target esp32s3
+          idf.py bootloader
+          grep -q "CONFIG_BOOTLOADER_APP_TEST=y" sdkconfig
+          cp build/bootloader/bootloader.bin "$GITHUB_WORKSPACE/bootloader.bin"
+      - name: Upload the bootloader
+        uses: actions/upload-artifact@v7
+        with:
+          if-no-files-found: error
+          name: unleashedats-bootloader
+          path: bootloader.bin
+
   build:
-    needs: tests
+    needs: [tests, bootloader]
     name: build ${{ matrix.board.artifact-suffix }}
     # compile-sketches@v1 pins Python 3.12.4, unavailable on Ubuntu 26.04.
     runs-on: ubuntu-24.04
@@ -99,8 +131,14 @@ jobs:
       - name: Get version slug
         id: slug
         run: |
-          # UnleashedATS tags: v<CFW version>-<ATS-Mini version>, e.g. v1.00-2.46
-          echo "slug=$(git describe --tags --match 'v?.??-?.??' --always --dirty || echo v0.00-0.00)" >> "$GITHUB_OUTPUT"
+          # UnleashedATS tags: v<CFW version>-<ATS-Mini version>, e.g. v1.00-2.46,
+          # and v1.02-2.46-beta1 for betas
+          echo "slug=$(git describe --tags --match 'v?.??-?.??*' --always --dirty || echo v0.00-0.00)" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare the recovery app sources
+        # The recovery app shares the display driver, the encoder decoder and
+        # the partition table with the firmware
+        run: cp ats-mini/Display.h ats-mini/Rotary.h ats-mini/Rotary.cpp ats-mini/partitions.csv recovery/
 
       - name: Compile firmware
         uses: arduino/compile-sketches@v1
@@ -108,6 +146,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           sketch-paths: |
             - ats-mini
+            - recovery
           fqbn: ${{ matrix.board.fqbn }}
           cli-compile-flags: ${{ matrix.board.cli-compile-flags }}
           # Disabled to prevent building artifact for a previous commit
@@ -137,6 +176,24 @@ jobs:
         run: >-
           python -c 'with open("ats-mini/build/esp32.esp32.esp32s3/ats-mini.ino.bin","rb") as f: f.seek(288); assert f.read(4) == b"ATSM", "Missing OTA metadata at offset 288"'
 
+      - name: Check the firmware and recovery app fit their slots
+        run: |
+          python - <<'EOF'
+          import csv, os
+          rows = {r[0].strip(): r for r in csv.reader(l for l in open("ats-mini/partitions.csv") if l.strip() and not l.startswith("#"))}
+          for name, path in (("app0", "ats-mini/build/esp32.esp32.esp32s3/ats-mini.ino.bin"),
+                             ("recovery", "recovery/build/esp32.esp32.esp32s3/recovery.ino.bin")):
+              size, limit = os.path.getsize(path), int(rows[name][4], 16)
+              print(f"{path}: {size} of {limit} bytes")
+              assert size <= limit, f"{path} does not fit the {name} partition"
+          EOF
+
+      - name: Download the bootloader
+        uses: actions/download-artifact@v8
+        with:
+          name: unleashedats-bootloader
+          path: custom-bootloader
+
       - name: Prepare compiled artifact
         run: |
           mkdir -p artifact/UnleashedATS-${{ steps.slug.outputs.slug }}-${{ matrix.board.artifact-suffix }}
@@ -144,6 +201,16 @@ jobs:
           cp ats-mini/build/esp32.esp32.esp32s3/boot_app0.bin artifact/UnleashedATS-${{ steps.slug.outputs.slug }}-${{ matrix.board.artifact-suffix }}/
           mv ats-mini/build/esp32.esp32.esp32s3/*.ino.bin ats-mini/build/esp32.esp32.esp32s3/*.ino.*.bin artifact/UnleashedATS-${{ steps.slug.outputs.slug }}-${{ matrix.board.artifact-suffix }}/
           cp CHANGELOG.md artifact/UnleashedATS-${{ steps.slug.outputs.slug }}-${{ matrix.board.artifact-suffix }}/
+          D=artifact/UnleashedATS-${{ steps.slug.outputs.slug }}-${{ matrix.board.artifact-suffix }}
+          cp recovery/build/esp32.esp32.esp32s3/recovery.ino.bin "$D/recovery.bin"
+          # The ATS-Mini gets the bootloader that starts the recovery app; on the
+          # T-Embed the button is the boot strapping pin, so it keeps the stock one
+          if [ "${{ matrix.board.artifact-suffix }}" != "lilygo-t-embed" ]; then
+            cp custom-bootloader/bootloader.bin "$D/ats-mini.ino.bootloader.bin"
+          fi
+          # Full image for web flashers, with the recovery app at its place
+          RECOVERY=$(python -c 'import csv; print([r[3].strip() for r in csv.reader(l for l in open("ats-mini/partitions.csv") if l.strip() and not l.startswith("#")) if r[0].strip()=="recovery"][0])')
+          uvx --from esptool esptool --chip esp32s3 merge-bin --output "$D/ats-mini.ino.merged.bin"             --flash-mode qio --flash-freq 80m --flash-size 8MB             0x0 "$D/ats-mini.ino.bootloader.bin" 0x8000 "$D/ats-mini.ino.partitions.bin"             0xe000 "$D/boot_app0.bin" 0x10000 "$D/ats-mini.ino.bin" "$RECOVERY" "$D/recovery.bin"
 
       - name: Upload compiled artifact
         uses: actions/upload-artifact@v7
@@ -178,13 +245,27 @@ jobs:
           path: artifact
       - name: Archive the build artifacts
         run: cd "artifact" && find . -mindepth 1 -maxdepth 1 -type d -exec sh -c 'zip -r "../${1%/}.zip" "$1"' _ {} \;
+      - name: Checkout the release tools
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: tools
+          path: source
       - name: Create release
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SLUG: ${{ needs.build.outputs.slug }}
-        run: >-
-          python -c 'import os,re; t=open(f"""artifact/UnleashedATS-{os.environ["SLUG"]}-ospi/CHANGELOG.md""").read(); r=re.search(f"""(^## {os.environ["SLUG"][1:].replace(".", "\\.")} .*?)(?=^## \\d|\\Z)""", t, re.MULTILINE | re.DOTALL); print(r.group(0) if r else "")' |
-          gh release create "$SLUG" --repo '${{ github.repository }}' --notes-file -
+        run: |
+          # Betas are published as prereleases, which only the beta update channel sees
+          FLAGS=""
+          case "$SLUG" in *-beta*) FLAGS="--prerelease" ;; esac
+          NOTES=$(python source/tools/release_notes.py "artifact/UnleashedATS-$SLUG-ospi/CHANGELOG.md" "$SLUG")
+          if [ -n "$NOTES" ]; then
+            # shellcheck disable=SC2086
+            echo "$NOTES" | gh release create "$SLUG" --repo '${{ github.repository }}' $FLAGS --notes-file -
+          else
+            # shellcheck disable=SC2086
+            gh release create "$SLUG" --repo '${{ github.repository }}' $FLAGS --generate-notes
+          fi
       - name: Upload release artifacts
         env:
           GITHUB_TOKEN: ${{ github.token }}

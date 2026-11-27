@@ -61,6 +61,9 @@
 #define CMD_DEBUG      0x3E00 // |
 #define CMD_BATTERY    0x3F00 //-+
 
+#define CMD_OTANOTES   0x4000 // Release notes before an update
+#define CMD_GAME       0x4100 // The hidden game
+
 // UI Layouts
 #define UI_DEFAULT  0
 #define UI_SMETER   1

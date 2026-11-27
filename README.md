@@ -36,7 +36,9 @@ FM-DX style remote control page.
 | 🌙 | **DX Mode.** No soft mute on weak stations, earlier blend to mono on FM, more sensitive seek, on FM, MW, LW and SW. | Settings → DX Mode |
 | 🖥️ | **FM-DX style remote.** A web page at `/remote` with signal history, PS/PI/PTY/RT, AF and EON lists, presets and an RDS logger. | `http://atsmini.local/remote` |
 | 🔌 | **Everything over USB.** A JSON monitor with the full receiver state, plus seek, DX and mono commands, for the PC companion. | USB ad hoc protocol |
-| 🔄 | **Updates from this repository.** *Settings → Update FW* checks and installs UnleashedATS releases. | Settings → Update FW |
+| 🔄 | **Updates from this repository.** *Settings → Update FW* shows the notes of a new release before installing it, offers a **beta channel**, and goes back to the **previous firmware** with two clicks. | Settings → Update FW |
+| 🛟 | **Recovery app.** A recovery app in a partition of its own, out of reach of updates: hold the encoder at power on to start either firmware slot, install a firmware from the browser or GitHub, erase data part by part or go to USB flashing, from the receiver or its own web page. It starts by itself when the firmware is broken, and an update that does not start is rolled back. | Power on |
+| 🎨 | **Theme editor.** Make your own color themes in the browser with a live preview on the receiver, and hide the built-in ones you do not use. | `http://atsmini.local/themes` |
 | 👋 | **Welcome screen** the first time the firmware runs and after each update. | Boot |
 
 ## Fewer restrictions
@@ -64,7 +66,9 @@ The firmware itself also lifts limits that the official one keeps on purpose:
 | RDS AF and EON data is received and thrown away. | AF and EON are **listed, browsable and tunable**, on the receiver and on the web. |
 | Seek has two modes. | A third, **Seek Auto**, rebuilds the memories from a full band sweep. |
 | The web interface shows the status and edits settings. | `/remote` gives **live tuning** from any browser, and USB gives the **full receiver state** as JSON. |
-| Updates come from the official repository only. | Updates come from this repository, and going back to the official firmware is a normal flash. |
+| Updates come from the official repository only. | Updates come from this repository, with release notes, a beta channel and a way back to the previous firmware; going back to the official firmware is a normal flash. |
+| Holding the encoder at power on erases everything. | It opens a **safe mode** where each kind of data is erased on its own, and the firmware can be recovered. |
+| Themes are built into the firmware. | Themes are **made and kept in the browser**, and built-in ones can be hidden. |
 
 Nothing here unlocks transmission or changes the hardware limits of the SI4732: it is still a receiver,
 from 150 kHz to 30 MHz and from 64 to 108 MHz.
