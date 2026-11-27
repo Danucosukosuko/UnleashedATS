@@ -841,7 +841,7 @@ void loop()
 
   // Running for a while: no longer a crash at startup
   static bool stable = false;
-  if(!stable && currentTime > 20000)
+  if(!stable && millis() > 20000)
   {
     recoveryStable();
     stable = true;
