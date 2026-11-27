@@ -3,6 +3,7 @@
 #include "Utils.h"
 #include "Stations.h"
 #include "Storage.h"
+#include "Debug.h"
 
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
@@ -106,7 +107,7 @@ static String filePath(const char *code)
 //
 static void stationsLog(const char *format, ...)
 {
-  if(usbModeIdx == USB_OFF) return;
+  if(usbModeIdx == USB_OFF || !debugUsbLog) return;
 
   char line[200];
   va_list args;

@@ -155,3 +155,16 @@ Once you are happy, add the resulting colors to `Theme.cpp`.
 6. Tag the release and push the tag `git tag -a vX.XX -m 'Version X.XX' && git push --follow-tags` (the tag should start with `v`!)
 
 Increase `VER_OTA` in `Common.h` when a release requires USB flashing, such as after a partition-table or bootloader change. Keep the increased value in subsequent releases so users who skip versions still receive the USB requirement. Updates between different `VER_OTA` values require USB, including downgrades.
+
+## Debug mode
+
+UnleashedATS has a debug mode for testing and development. It is hidden on purpose: what it unlocks can put the receiver outside of what it is known to handle.
+
+To toggle it, open *Settings → About* and **short press** the encoder (hold it for about half a second) three times. The receiver confirms with *Debug On* or *Debug Off*. A click still leaves the About screen as usual.
+
+In debug mode, a **Debug** entry appears at the end of the Settings menu, for the band the receiver is on:
+
+* **Min**, **Max** - Click to edit the lower or upper limit of the band, rotate to change it (100 kHz steps on FM, 1 kHz steps on AM/SSB, faster when rotated quickly), click again to apply it. The limits can go beyond what the SI4732 supports (30-150 MHz on FM, 100 kHz-35 MHz on AM): the receiver accepts them, but tuning outside its range may give noise, silence or no lock at all. The limits are saved and survive a restart; the band name gets a `*` while they differ from the defaults.
+* **Reset Band** - Put the original limits of the band back.
+* **USB Log** - Print diagnostics, such as the steps of the station list downloads, on the USB port in ad hoc mode.
+* **Debug Off** - Leave debug mode. The changed band limits stay until each band is reset.

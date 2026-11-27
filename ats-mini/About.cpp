@@ -16,7 +16,7 @@ static void displayQRCode(esp_qrcode_handle_t qrcode)
   for(int y = 0 ; y < size ; y++)
     for(int x = 0 ; x < size ; x++)
       if(esp_qrcode_get_module(qrcode, x, y))
-        spr.fillRect(2 + x * 4, 170 - 2 - size * 4 + y * 4, 4, 4, TH.text);
+        spr.fillRect(2 + x * 3, 170 - 2 - size * 3 + y * 3, 3, 3, TH.text);
 }
 
 static void drawAboutCommon(uint8_t arrow)
@@ -41,19 +41,20 @@ void drawAboutHelp(uint8_t arrow)
   esp_qrcode_config_t qrcode_config = ESP_QRCODE_CONFIG_DEFAULT();
   qrcode_config.display_func = displayQRCode;
   esp_qrcode_generate(&qrcode_config, MANUAL_URL);
-  spr.drawString("Scan the QR code to read", 130, 70 + 16 * -1, FONT_SMALL);
-  spr.drawString("the User Manual.", 130, 70 + 16 * 0, FONT_SMALL);
-  spr.drawString("Click the encoder button", 130, 70 + 16 * 1, FONT_SMALL);
-  spr.drawString("to continue.", 130, 70 + 16 * 2, FONT_SMALL);
+  // The text starts clear of the QR code, which is 99 pixels wide
+  spr.drawString("Scan the QR code to read", 108, 70 + 16 * -1, FONT_SMALL);
+  spr.drawString("the User Manual.", 108, 70 + 16 * 0, FONT_SMALL);
+  spr.drawString("Click the encoder button", 108, 70 + 16 * 1, FONT_SMALL);
+  spr.drawString("to continue.", 108, 70 + 16 * 2, FONT_SMALL);
   if(arrow)
   {
-    spr.drawString("Rotate the encoder to see", 130, 70 + 16 * 3, FONT_SMALL);
-    spr.drawString("the next page.", 130, 70 + 16 * 4, FONT_SMALL);
+    spr.drawString("Rotate the encoder to see", 108, 70 + 16 * 3, FONT_SMALL);
+    spr.drawString("the next page.", 108, 70 + 16 * 4, FONT_SMALL);
   }
   else
   {
-    spr.drawString("To see this screen again,", 130, 70 + 16 * 4, FONT_SMALL);
-    spr.drawString("go to Menu->Settings->About.", 130, 70 + 16 * 5, FONT_SMALL);
+    spr.drawString("To see this screen again,", 108, 70 + 16 * 4, FONT_SMALL);
+    spr.drawString("go to Menu > Settings > About.", 108, 70 + 16 * 5, FONT_SMALL);
   }
   spr.pushSprite(0, 0);
 }

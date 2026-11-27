@@ -12,6 +12,8 @@
 #include "Storage.h"
 #include "AltFreq.h"
 #include "Stations.h"
+#include "DxWatch.h"
+#include "Debug.h"
 
 #include <time.h>
 
@@ -119,12 +121,13 @@ static int findBand(uint32_t freq, uint8_t mode, int preferredBand)
 #define MENU_STATIONS    10
 #define MENU_AFLIST      11
 #define MENU_EONLIST     12
-#define MENU_SQUELCH     13
-#define MENU_BW          14
-#define MENU_AGC_ATT     15
-#define MENU_AVC         16
-#define MENU_SOFTMUTE    17
-#define MENU_SETTINGS    18
+#define MENU_DXWATCH     13
+#define MENU_SQUELCH     14
+#define MENU_BW          15
+#define MENU_AGC_ATT     16
+#define MENU_AVC         17
+#define MENU_SOFTMUTE    18
+#define MENU_SETTINGS    19
 
 int8_t menuIdx = MENU_VOLUME;
 
@@ -143,6 +146,7 @@ static const char *menu[] =
   "Stations",
   "RDS AF",
   "RDS EON",
+  "DX Watch",
   "Squelch",
   "Bandwidth",
   "AGC/ATTN",
@@ -181,6 +185,7 @@ static const char *menu[] =
 #define MENU_BLEMODE      23
 #define MENU_WIFIMODE     24
 #define MENU_ABOUT        25
+#define MENU_DEBUG        26  // Only listed in debug mode
 
 
 static uint8_t updateFwIdx = 0;
@@ -216,7 +221,11 @@ static const char *settings[] =
   "Bluetooth",
   "Wi-Fi",
   "About",
+  "Debug",
 };
+
+// The last setting only shows up in debug mode
+static int visibleSettings() { return(ITEM_COUNT(settings) - (debugMode? 0 : 1)); }
 
 //
 // FM Region Menu
@@ -282,6 +291,92 @@ static uint8_t eonLevel = 0;      // 0: networks, 1: frequencies
 static int eonIdx = 0;
 static bool eonTuning = false;
 static EonNetwork eonSelected;    // Network being browsed
+
+//
+// DX Watch: a warning first, then the sweep
+//
+static uint8_t dxwIdx = 1;
+
+//
+// Debug menu (debug mode only)
+//
+static uint8_t aboutPresses = 0;  // Short presses on the About screen
+static int debugIdx = 1;
+static int debugEdit = 0;         // 1: editing the minimum, 2: the maximum
+static uint32_t debugValue = 0;
+static const char *const debugItems[] = { "Back", "Min", "Max", "Reset Band", "USB Log", "Debug Off" };
+
+static void freqText(char *text, size_t size, uint32_t freq, bool fm)
+{
+  if(fm) snprintf(text, size, "%.2f", freq / 1000000.0);
+  else snprintf(text, size, "%lu k", (unsigned long)(freq / 1000));
+}
+
+static void doDebug(int16_t enc, int16_t enca)
+{
+  if(!debugEdit)
+  {
+    debugIdx = wrap_range(debugIdx, enc, 0, LAST_ITEM(debugItems));
+    return;
+  }
+
+  // Past what the receiver is known to support, on purpose
+  bool fm = bands[bandIdx].bandMode==FM;
+  int64_t step  = fm? 100000 : 1000;
+  int64_t value = (int64_t)debugValue + step * enca;
+  int64_t lo = fm? 30000000 : 100000, hi = fm? 150000000 : 35000000;
+  debugValue = value<lo? lo : value>hi? hi : value;
+}
+
+static void clickDebug(bool shortPress)
+{
+  Band *band = &bands[bandIdx];
+
+  if(debugEdit)
+  {
+    uint32_t minimum = debugEdit==1? debugValue : band->minimumFreq;
+    uint32_t maximum = debugEdit==2? debugValue : band->maximumFreq;
+    debugEdit = 0;
+    if(minimum >= maximum)
+    {
+      drawMessage("Min >= Max");
+      delay(1000);
+      return;
+    }
+    debugSetBandLimits(bandIdx, minimum, maximum);
+    if(band->currentFreq < minimum || band->currentFreq > maximum) band->currentFreq = minimum;
+    selectBand(bandIdx);
+    prefsRequestSave(SAVE_CUR_BAND);
+    return;
+  }
+
+  switch(debugIdx)
+  {
+    case 0: currentCmd = CMD_NONE; break;
+    case 1:
+    case 2:
+      debugEdit = debugIdx;
+      debugValue = debugIdx==1? band->minimumFreq : band->maximumFreq;
+      break;
+    case 3:
+      debugResetBandLimits(bandIdx);
+      if(band->currentFreq < band->minimumFreq || band->currentFreq > band->maximumFreq)
+        band->currentFreq = band->minimumFreq;
+      selectBand(bandIdx);
+      drawMessage("Band reset");
+      delay(800);
+      break;
+    case 4: debugUsbLog = !debugUsbLog; break;
+    case 5:
+      debugSetMode(false);
+      settingsIdx = 0;
+      currentCmd = CMD_NONE;
+      drawMessage("Debug Off");
+      delay(800);
+      break;
+  }
+}
+static const char *const dxwActions[] = { "Back", "Start" };
 
 uint8_t dspPatchesIdx = DSP_PATCHES_DEFAULT;
 
@@ -1782,6 +1877,12 @@ static void clickMenu(int cmd, bool shortPress)
       break;
 
     case MENU_STATIONS: enterStations(); break;
+    case MENU_DXWATCH:
+      // Say what it costs before it starts
+      dxwIdx = 1;
+      statusShow("DX Watch may drain the battery.", "Plugging in to USB is recommended.", 0);
+      currentCmd = CMD_DXWATCH;
+      break;
     case MENU_AFLIST:   enterAfList();   break;
     case MENU_EONLIST:  enterEonList();  break;
   }
@@ -1789,7 +1890,7 @@ static void clickMenu(int cmd, bool shortPress)
 
 static void doSettings(int16_t enc)
 {
-  settingsIdx = wrap_range(settingsIdx, enc, 0, LAST_ITEM(settings));
+  settingsIdx = wrap_range(settingsIdx, enc, 0, visibleSettings() - 1);
 }
 
 static void clickSettings(int cmd, bool shortPress)
@@ -1831,7 +1932,15 @@ static void clickSettings(int cmd, bool shortPress)
     case MENU_FM_STEREO:  currentCmd = CMD_FM_STEREO; break;
     case MENU_ANTCAP:     currentCmd = CMD_ANTCAP;    break;
     case MENU_DSP_PATCHES: currentCmd = CMD_DSP_PATCHES; break;
-    case MENU_ABOUT:      currentCmd = CMD_ABOUT;     break;
+    case MENU_ABOUT:
+      aboutPresses = 0;
+      currentCmd = CMD_ABOUT;
+      break;
+    case MENU_DEBUG:
+      debugIdx = 1;
+      debugEdit = 0;
+      currentCmd = CMD_DEBUG;
+      break;
     case MENU_UPDATEFW:
       updateFwIdx = 0;
       currentCmd = CMD_UPDATEFW;
@@ -1893,6 +2002,17 @@ bool doSideBar(uint16_t cmd, int16_t enc, int16_t enca)
     case CMD_ZOOM:       doZoom(enc);break;
     case CMD_ENC_ACCEL:  doEncoderAcceleration();break;
     case CMD_DXMODE:     doDxMode();break;
+    case CMD_DEBUG:      doDebug(scrollDirection * enc, scrollDirection * enca);break;
+    case CMD_DXWATCH:
+      if(dxWatchPhase()==DXW_OFF)
+        dxwIdx = wrap_range(dxwIdx, scrollDirection * enc, 0, LAST_ITEM(dxwActions));
+      else
+      {
+        // Taking over the tuning ends the watch, a catch keeps playing
+        dxWatchStop(dxWatchPhase()==DXW_CATCH);
+        currentCmd = CMD_NONE;
+      }
+      break;
     case CMD_AUTOSTORE:  autoStoreIdx = wrap_range(autoStoreIdx, scrollDirection * enc, 0, LAST_ITEM(autoStoreActions));break;
     // Taking over the tuning cancels the memory scan
     case CMD_MEMSCAN:    memScanStop();currentCmd = CMD_NONE;break;
@@ -1943,6 +2063,31 @@ bool clickHandler(uint16_t cmd, bool shortPress)
     case CMD_LOADSTN:  clickLoadStations(shortPress);break;
     case CMD_AFLIST:   clickAfList(shortPress);break;
     case CMD_EONLIST:  clickEonList(shortPress);break;
+    case CMD_DEBUG:    clickDebug(shortPress);break;
+    case CMD_ABOUT:
+      // Three short presses toggle debug mode, a click leaves as before
+      if(!shortPress) return(false);
+      if(++aboutPresses >= 3)
+      {
+        aboutPresses = 0;
+        debugSetMode(!debugMode);
+        drawMessage(debugMode? "Debug On" : "Debug Off");
+        delay(1000);
+      }
+      break;
+    case CMD_DXWATCH:
+      if(dxWatchPhase()==DXW_OFF)
+      {
+        statusShow(nullptr);
+        if(dxwIdx==1) dxWatchStart();
+        if(dxWatchPhase()==DXW_OFF) currentCmd = CMD_NONE;
+      }
+      else
+      {
+        dxWatchStop(dxWatchPhase()==DXW_CATCH);
+        currentCmd = CMD_NONE;
+      }
+      break;
     case CMD_FREQ:     return(clickFreq(shortPress));
     case CMD_DATETIME: clickDateTime(shortPress);break;
     default:           return(false);
@@ -2051,7 +2196,7 @@ static void drawSettings(int x, int y, int sx)
   spr.setTextColor(TH.menu_item);
   spr.fillRoundRect(6+x, 24+y+(2*16), 66+sx, 16, 2, TH.menu_hl_bg);
 
-  int count = ITEM_COUNT(settings);
+  int count = visibleSettings();
   for(int i=-2 ; i<3 ; i++)
   {
     if(i==0) {
@@ -3032,6 +3177,84 @@ static void drawAutoStore(int x, int y, int sx)
   }
 }
 
+static void drawDxWatch(int x, int y, int sx)
+{
+  if(dxWatchPhase()==DXW_OFF)
+  {
+    drawCommon(menu[MENU_DXWATCH], x, y, sx, true);
+    for(int i=0 ; i<ITEM_COUNT(dxwActions) ; i++)
+    {
+      if(i == dxwIdx)
+      {
+        drawZoomedMenu(dxwActions[i]);
+        spr.setTextColor(TH.menu_hl_text, TH.menu_hl_bg);
+      }
+      else spr.setTextColor(TH.menu_item);
+      spr.setTextDatum(MC_DATUM);
+      spr.drawString(dxwActions[i], 40+x+(sx/2), 64+y+((i-dxwIdx)*16), FONT_SMALL);
+    }
+    return;
+  }
+
+  char line[24];
+  const DxCatch *last = dxWatchLastCatch();
+  bool caught = dxWatchPhase()==DXW_CATCH && last;
+
+  drawCommon(caught? "DX Catch!" : menu[MENU_DXWATCH], x, y, sx);
+  spr.setTextDatum(MC_DATUM);
+  spr.setTextColor(TH.menu_param);
+
+  if(caught)
+  {
+    sprintf(line, "%.1f", last->freq / 1000000.0);
+    spr.drawString(line, 40+x+(sx/2), 44+y, FONT_LARGE);
+    sprintf(line, "PI %04X", last->pi);
+    spr.drawString(line, 40+x+(sx/2), 68+y, FONT_SMALL);
+    drawMarquee(last->ps[0]? last->ps : "- - -", 8+x, 76+y, 62+sx, FONT_SMALL, true);
+    spr.drawString("Click: stop", 40+x+(sx/2), 100+y, FONT_SMALL);
+    return;
+  }
+
+  spr.drawString(dxWatchPhase()==DXW_LEARNING? "Learning" : "Watching", 40+x+(sx/2), 40+y, FONT_SMALL);
+  sprintf(line, "%.1f", dxWatchFrequency() / 1000000.0);
+  spr.drawString(line, 40+x+(sx/2), 60+y, FONT_LARGE);
+  sprintf(line, "Sweep %u", dxWatchSweeps() + 1);
+  spr.drawString(line, 40+x+(sx/2), 84+y, FONT_SMALL);
+  sprintf(line, "Catches %u", dxWatchCatches());
+  spr.drawString(line, 40+x+(sx/2), 100+y, FONT_SMALL);
+}
+
+static void drawDebug(int x, int y, int sx)
+{
+  bool fm = bands[bandIdx].bandMode==FM;
+  char title[24];
+
+  if(debugEdit)
+  {
+    char value[16];
+    drawCommon(debugEdit==1? "Edit Min" : "Edit Max", x, y, sx);
+    freqText(value, sizeof(value), debugValue, fm);
+    spr.setTextDatum(MC_DATUM);
+    spr.setTextColor(TH.menu_param);
+    drawMarquee(value, 8+x, 52+y, 62+sx, FONT_LARGE, false);
+    spr.drawString(bands[bandIdx].bandName, 40+x+(sx/2), 90+y, FONT_SMALL);
+    return;
+  }
+
+  snprintf(title, sizeof(title), "%s%s", bands[bandIdx].bandName, debugBandLimitsChanged(bandIdx)? "*" : "");
+  drawList(title, ITEM_COUNT(debugItems) - 1, debugIdx, [](int i, char *text, size_t size) {
+    bool fm = bands[bandIdx].bandMode==FM;
+    char value[16];
+    switch(i + 1)
+    {
+      case 1: freqText(value, sizeof(value), bands[bandIdx].minimumFreq, fm); snprintf(text, size, "Min %s", value); break;
+      case 2: freqText(value, sizeof(value), bands[bandIdx].maximumFreq, fm); snprintf(text, size, "Max %s", value); break;
+      case 4: snprintf(text, size, "USB Log %s", debugUsbLog? "On" : "Off"); break;
+      default: snprintf(text, size, "%s", debugItems[i + 1]); break;
+    }
+  }, x, y, sx);
+}
+
 static void drawDxMode(int x, int y, int sx)
 {
   drawCommon(settings[MENU_DXMODE], x, y, sx);
@@ -3091,6 +3314,8 @@ void drawSideBar(uint16_t cmd, int x, int y, int sx)
     case CMD_AFLIST:     drawAfList(x, y, sx);     break;
     case CMD_EONLIST:    drawEonList(x, y, sx);    break;
     case CMD_DXMODE:     drawDxMode(x, y, sx);     break;
+    case CMD_DXWATCH:    drawDxWatch(x, y, sx);    break;
+    case CMD_DEBUG:      drawDebug(x, y, sx);      break;
     default:             drawInfo(x, y, sx);       break;
   }
 }

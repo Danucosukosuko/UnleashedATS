@@ -20,6 +20,7 @@
 #include "PageUpdate.h"
 #include "PagePatches.h"
 #include "PageRemote.h"
+#include "DxWatch.h"
 
 #include <new>
 #include <mutex>
@@ -336,6 +337,13 @@ void webInit()
     request->send(response);
   });
   server.on("/api/cmd", HTTP_POST, webRemoteCommand);
+
+  // Stations caught by DX Watch
+  server.on("/dxlog.csv", HTTP_GET, [] (AsyncWebServerRequest *request) {
+    if(!webIsAuthenticated(request)) return request->requestAuthentication();
+    if(!LittleFS.exists(DXWATCH_LOG)) return request->send(404, "text/plain", "No catches yet");
+    request->send(LittleFS, DXWATCH_LOG, "text/csv", true);
+  });
 
   server.on("/config", HTTP_ANY, [] (AsyncWebServerRequest *request) {
     if(!webIsAuthenticated(request)) return request->requestAuthentication();

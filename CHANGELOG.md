@@ -16,6 +16,7 @@ First UnleashedATS release, based on ATS-Mini v2.46 and the changes merged after
 - TP, AF and EON indicators next to the frequency.
 - FM station lists by country: *Settings → Load Stations* downloads the list of a country (replacing the previous one), *Menu → Stations* browses it by province or state, and the stations of your home province are named on screen when there is no RDS.
 - Long names in the menus and on the main screen slide along so they can be read in full.
+- **DX Watch** sweeps the FM band while you are not listening, learns the local stations and stops on any new one, logging tropospheric and sporadic E catches to `dxlog.csv`.
 - **Auto Store** sweeps the band and stores the stations found, named after their RDS name. **Add New** fills the free slots, **Replace** drops the stations of the band first.
 - **Mem Scan** hops through the memories, skipping the quiet ones and holding on an active channel.
 - **Seek Auto** mode, which rebuilds the memories from a full sweep of the band.

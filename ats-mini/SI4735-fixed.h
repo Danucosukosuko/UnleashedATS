@@ -271,6 +271,9 @@ class SI4735_fixed: public SI4735
              currentRdsStatus.resp.BLED<=1;
     }
 
+    // TRUE when block A, the program identification, came through clean
+    bool getRdsBlockAReliable() { return currentRdsStatus.resp.BLEA<=1; }
+
     // Blend thresholds for weak signal listening: the audio drops to mono
     // well before the stereo hiss becomes noticeable
     void setFmStereoDx()

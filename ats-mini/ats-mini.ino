@@ -21,6 +21,8 @@
 #include "Web.h"
 #include "AltFreq.h"
 #include "Stations.h"
+#include "DxWatch.h"
+#include "Debug.h"
 #include <stdlib.h>
 #include <time.h>
 
@@ -243,6 +245,9 @@ void setup()
 
   // If loading bands fails, save default bands
   if(!prefsLoad(SAVE_BANDS|SAVE_VERIFY)) prefsSave(SAVE_BANDS);
+
+  // Band limits changed in debug mode
+  debugApplyBandLimits();
 
   // Audio Amplifier Enable. G8PTN: Added
   // After the SI4732 has been setup, enable the audio amplifier
@@ -851,7 +856,8 @@ void loop()
     // Long lists and running scans stay open until left on purpose
     if(currentCmd != CMD_NONE && currentCmd != CMD_SEEK && currentCmd != CMD_SCAN && currentCmd != CMD_MEMORY &&
        currentCmd != CMD_MEMSCAN && currentCmd != CMD_STATIONS &&
-       currentCmd != CMD_LOADSTN && currentCmd != CMD_AFLIST && currentCmd != CMD_EONLIST)
+       currentCmd != CMD_LOADSTN && currentCmd != CMD_AFLIST && currentCmd != CMD_EONLIST &&
+       currentCmd != CMD_DXWATCH && currentCmd != CMD_DEBUG)
     {
       currentCmd = CMD_NONE;
       needRedraw = true;
@@ -888,6 +894,9 @@ void loop()
     prefsRequestSave(SAVE_CUR_BAND);
     needRedraw = true;
   }
+
+  // Sweep the FM band while DX Watch runs
+  needRedraw |= dxWatchTick();
 
   // Hop through the memory slots while the memory scan runs
   if(memScanTickTime())

@@ -56,7 +56,9 @@
 #define CMD_AFLIST     0x3900 // |
 #define CMD_EONLIST    0x3A00 // |
 #define CMD_LOADSTN    0x3B00 // |
-#define CMD_DXMODE     0x3C00 //-+
+#define CMD_DXMODE     0x3C00 // |
+#define CMD_DXWATCH    0x3D00 // |
+#define CMD_DEBUG      0x3E00 //-+
 
 // UI Layouts
 #define UI_DEFAULT  0

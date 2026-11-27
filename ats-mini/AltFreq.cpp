@@ -2,6 +2,7 @@
 #include "Utils.h"
 #include "Menu.h"
 #include "AltFreq.h"
+#include "DxWatch.h"
 
 // Alternative frequency codes, see IEC 62106 (EN 50067) section 3.2.1.6
 #define AF_CODE_MIN         1   // First code that maps to a VHF frequency
@@ -317,7 +318,7 @@ bool afTickTime()
 
   // Leave the scanners and the frequency lists alone
   if(currentCmd==CMD_SCAN || currentCmd==CMD_SEEK || currentCmd==CMD_AFLIST ||
-     currentCmd==CMD_EONLIST || memScanRunning())
+     currentCmd==CMD_EONLIST || memScanRunning() || dxWatchPhase()!=DXW_OFF)
     return(false);
 
   // Reception is fine, stay where we are
