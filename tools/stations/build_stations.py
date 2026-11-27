@@ -357,7 +357,8 @@ REGION_PREFIX = re.compile(r"^(province of|provincia de|provincia di|province de
 REGION_ALIASES = {"ES": {"Gerona": "Girona", "Lérida": "Lleida", "Vizcaya": "Bizkaia",
                          "Guipúzcoa": "Gipuzkoa", "Orense": "Ourense", "La Coruña": "A Coruña",
                          "Baleares": "Illes Balears", "Islas Baleares": "Illes Balears",
-                         "Álava": "Álava", "Araba": "Álava", "Castellón de la Plana": "Castellón"}}
+                         "Álava": "Álava", "Araba": "Álava", "Castellón de la Plana": "Castellón"},
+                  "US": {"Arisona": "Arizona"}}
 
 
 def clean_region(name, cc):
