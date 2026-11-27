@@ -2,7 +2,9 @@
 #define THEMES_H
 
 #include <stdint.h>
-#include <Print.h>
+
+// Only named here, so that the host unit tests can include this header
+class Print;
 
 // This is our current theme
 #define TH (*currentTheme)
