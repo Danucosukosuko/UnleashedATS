@@ -4,6 +4,20 @@ UnleashedATS releases are named `v<CFW version>-<ATS-Mini version>`. The user ma
 
 <!-- towncrier release notes start -->
 
+## 1.01-2.46 (2026-11-27)
+
+### Added
+
+- **DX Watch** sweeps the FM band in 100 kHz steps while you are not listening and stops on any station that is not usually there, which is how tropospheric and sporadic E openings show up. It spends three sweeps learning every channel that carries a signal, whether its RDS can be read or not, and then only checks the channels that were empty; a catch needs the same new RDS program identification in two clean groups in a row, and stations listed for your home province never set it off. Catches play, light up the display and are logged to `dxlog.csv`, served by the web interface at `/dxlog.csv`. It warns that it may drain the battery and recommends USB power.
+- *Settings → Battery* shows the battery as a voltage or as a percentage. The percentage follows the discharge curve of a lithium cell.
+- The `J` JSON status and the web interface report the battery voltage (`batt_v`) and percentage (`batt_pct`, `-1` while charging).
+- The station lists now include the United States, by state.
+
+### Changed
+
+- The battery reading is filtered, so the voltage and the percentage follow the cell without jumping with the load.
+- The About screen has a smaller QR code, so its text fits.
+
 ## 1.00-2.46 (2026-11-26)
 
 First UnleashedATS release, based on ATS-Mini v2.46 and the changes merged after it.
@@ -16,7 +30,6 @@ First UnleashedATS release, based on ATS-Mini v2.46 and the changes merged after
 - TP, AF and EON indicators next to the frequency.
 - FM station lists by country: *Settings → Load Stations* downloads the list of a country (replacing the previous one), *Menu → Stations* browses it by province or state, and the stations of your home province are named on screen when there is no RDS.
 - Long names in the menus and on the main screen slide along so they can be read in full.
-- **DX Watch** sweeps the FM band while you are not listening, learns the local stations and stops on any new one, logging tropospheric and sporadic E catches to `dxlog.csv`.
 - **Auto Store** sweeps the band and stores the stations found, named after their RDS name. **Add New** fills the free slots, **Replace** drops the stations of the band first.
 - **Mem Scan** hops through the memories, skipping the quiet ones and holding on an active channel.
 - **Seek Auto** mode, which rebuilds the memories from a full sweep of the band.

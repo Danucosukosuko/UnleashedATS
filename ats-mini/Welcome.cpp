@@ -8,10 +8,10 @@
 
 static const char *const welcomeNews[] =
 {
-  "RDS AF & EON lists, AF tuning",
-  "FM station lists by country",
-  "Auto Store, Mem Scan, DX Mode",
-  "S-meter peak, AF/EON indicators",
+  "DX Watch: alerts on FM openings",
+  "Battery as voltage or percent",
+  "Station lists: Spain and the US",
+  "Tidier About screen",
 };
 
 static void drawCentered(const char *text, int y, const lgfx::IFont *font, uint16_t color)
