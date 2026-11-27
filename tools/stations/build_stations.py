@@ -358,7 +358,8 @@ REGION_ALIASES = {"ES": {"Gerona": "Girona", "Lérida": "Lleida", "Vizcaya": "Bi
                          "Guipúzcoa": "Gipuzkoa", "Orense": "Ourense", "La Coruña": "A Coruña",
                          "Baleares": "Illes Balears", "Islas Baleares": "Illes Balears",
                          "Álava": "Álava", "Araba": "Álava", "Castellón de la Plana": "Castellón"},
-                  "US": {"Arisona": "Arizona"}}
+                  "US": {"Arisona": "Arizona", "Northern Mariana Islands": "N. Mariana Islands",
+                         "United States Virgin Islands": "US Virgin Islands"}}
 
 
 def clean_region(name, cc):
