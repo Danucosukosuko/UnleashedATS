@@ -8,6 +8,8 @@
 #include "Screenshot.h"
 #include "RemoteAdhoc.h"
 #include "ParserAdhoc.h"
+#include "Backup.h"
+#include "DxWatch.h"
 
 static_assert(1 + AdhocCommand::THEME_WORDS * 5 <= FramerState::BUFFER_SIZE,
               "A theme must fit in the remote input buffer");
@@ -215,6 +217,20 @@ static bool remoteExecuteCommand(Stream& stream, AdhocState& state, const AdhocC
     case Id::GetMemories:
       remoteGetMemories(stream);
       return false;
+    case Id::Backup:
+    case Id::BackupNoNetwork:
+      // Framed, so that the web updater can save it as a file
+      state.logging = false;
+      stream.print("BACKUP BEGIN\r\n");
+      backupWrite(stream, command.id == Id::Backup);
+      stream.print("BACKUP END\r\n");
+      return false;
+    case Id::DxLog:
+      state.logging = false;
+      stream.print("DXLOG BEGIN\r\n");
+      dxWatchWriteLog(stream);
+      stream.print("DXLOG END\r\n");
+      return false;
     case Id::ToggleThemeEditor:
       stream.println(switchThemeEditor(!switchThemeEditor()) ? "Theme editor enabled" : "Theme editor disabled");
       return true;
@@ -258,8 +274,42 @@ void remoteAdhocEcho(Stream& stream, const FramerState& input, uint8_t byte)
   }
 }
 
+// "&BEGIN", one "&<line>" per stored value, "&END": restore a backup,
+// answering each line so that the sender can wait for it
+static void remoteRestoreFrame(Stream& stream, ByteSpan frame)
+{
+  char line[FramerState::BUFFER_SIZE];
+  size_t length = 0;
+  for(size_t i=1 ; i<frame.size && frame.data[i] != '\r' && frame.data[i] != '\n' && length < sizeof(line) - 1 ; i++)
+    line[length++] = frame.data[i];
+  line[length] = '\0';
+
+  if(!strcmp(line, "BEGIN"))
+  {
+    backupRestoreBegin();
+    stream.print("&OK\r\n");
+  }
+  else if(!strcmp(line, "END"))
+  {
+    stream.printf("&DONE %d\r\n", backupRestoreEnd());
+    stream.flush();
+    // Start again with what was restored
+    delay(500);
+    ESP.restart();
+  }
+  else if(const char *error = backupRestoreLine(line))
+    stream.printf("&ERR %s\r\n", error);
+  else
+    stream.print("&OK\r\n");
+}
+
 bool remoteAdhocFrame(Stream& stream, AdhocState& state, ByteSpan frame)
 {
+  if(frame.data[0] == '&')
+  {
+    remoteRestoreFrame(stream, frame);
+    return false;
+  }
   if(frame.data[0] == '^' && !switchThemeEditor()) return false;
   AdhocCommand command;
   const ParseResult result = parseAdhoc(frame, command);

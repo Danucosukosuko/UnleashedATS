@@ -6,8 +6,8 @@ using namespace command_parser;
 static FramingDecision frameAdhoc(ByteSpan input) {
   const uint8_t first = input.data[0];
 
-  // Memory and frequency commands end at CR or LF.
-  if (first == '#' || first == 'F') {
+  // Memory, frequency and backup restore commands end at CR or LF.
+  if (first == '#' || first == 'F' || first == '&') {
     const uint8_t last = input.data[input.size - 1];
     if (!newline(last)) return FramingDecision::Incomplete;
     return FramingDecision::Complete;
@@ -117,6 +117,9 @@ ParseResult parseAdhoc(ByteSpan frame, AdhocCommand& out) {
     case 'g': out.id = Id::SeekDown; break;
     case 'X': out.id = Id::ToggleDx; break;
     case 'Z': out.id = Id::ToggleMono; break;
+    case 'K': out.id = Id::Backup; break;
+    case 'k': out.id = Id::BackupNoNetwork; break;
+    case 'D': out.id = Id::DxLog; break;
     case '\r': case '\n': return ParseResult::None;
     default: return ParseResult::UnknownCommand;
   }

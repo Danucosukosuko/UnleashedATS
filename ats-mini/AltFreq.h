@@ -39,6 +39,12 @@ bool eonPresent();
 bool rdsTrafficProgram();
 bool rdsTrafficAnnouncement();
 
+// RadioText Plus: the title and artist of what is playing, as tagged by the
+// station, and both together as "Artist - Title". Empty when not tagged.
+const char *rtPlusTitle();
+const char *rtPlusArtist();
+const char *rtPlusText();
+
 // Groups decoded, groups with errors, and groups per type (type * 2 + B)
 void rdsStats(uint32_t *groups, uint32_t *bad, const uint32_t **types);
 

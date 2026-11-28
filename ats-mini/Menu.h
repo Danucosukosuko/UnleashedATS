@@ -63,6 +63,8 @@
 
 #define CMD_OTANOTES   0x4000 // Release notes before an update
 #define CMD_GAME       0x4100 // The hidden game
+#define CMD_DXLOG      0x4200 // DX Watch log
+#define CMD_PTYSEARCH  0x4300 // PTY Search
 
 // UI Layouts
 #define UI_DEFAULT  0

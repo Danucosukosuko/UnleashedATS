@@ -27,6 +27,7 @@
 #include "Recovery.h"
 #include "Ota.h"
 #include "Game.h"
+#include "PtySearch.h"
 #include <stdlib.h>
 #include <time.h>
 
@@ -839,6 +840,9 @@ void loop()
   // The hidden game runs its own frames
   needRedraw |= gameTick();
 
+  // PTY Search goes through the band one channel at a time
+  needRedraw |= ptySearchTick();
+
   // Running for a while: no longer a crash at startup
   static bool stable = false;
   if(!stable && millis() > 20000)
@@ -896,7 +900,8 @@ void loop()
        currentCmd != CMD_MEMSCAN && currentCmd != CMD_STATIONS &&
        currentCmd != CMD_LOADSTN && currentCmd != CMD_AFLIST && currentCmd != CMD_EONLIST &&
        currentCmd != CMD_DXWATCH && currentCmd != CMD_DEBUG &&
-       currentCmd != CMD_OTANOTES && currentCmd != CMD_GAME)
+       currentCmd != CMD_OTANOTES && currentCmd != CMD_GAME &&
+       currentCmd != CMD_DXLOG && currentCmd != CMD_PTYSEARCH)
     {
       currentCmd = CMD_NONE;
       needRedraw = true;

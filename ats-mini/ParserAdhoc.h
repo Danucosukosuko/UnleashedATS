@@ -43,6 +43,9 @@ struct AdhocCommand {
     SeekDown,
     ToggleDx,
     ToggleMono,
+    Backup,
+    BackupNoNetwork,
+    DxLog,
   };
 
   static constexpr size_t BAND_LEN = 8;

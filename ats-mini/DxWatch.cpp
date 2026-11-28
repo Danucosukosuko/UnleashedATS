@@ -6,6 +6,7 @@
 #include "DxWatch.h"
 
 #include <LittleFS.h>
+#include <time.h>
 
 #define DXW_FIRST_HZ    87500000  // Broadcast FM band
 #define DXW_LAST_HZ    108000000
@@ -175,16 +176,121 @@ static void readPs(char *ps)
   }
 }
 
+#define DXLOG_HEADER "time_utc,frequency_mhz,pi,ps,rssi_dbuv,snr_db"
+
+// Logs from before 1.03 had the local time of day only: keep their catches
+// under the header that has the UTC date and time
+static void migrateLog()
+{
+  fs::File file = LittleFS.open(DXWATCH_LOG, "r");
+  if(!file) return;
+  String first = file.readStringUntil('\n');
+  if(!first.startsWith("time,"))
+  {
+    file.close();
+    return;
+  }
+  String rest = file.readString();
+  file.close();
+
+  file = LittleFS.open(DXWATCH_LOG, "w");
+  if(!file) return;
+  file.print(DXLOG_HEADER "\n");
+  // Old rows: "HH:MM,..." become ",..." with no UTC time
+  int start = 0;
+  while(start < (int)rest.length())
+  {
+    int end = rest.indexOf('\n', start);
+    if(end < 0) end = rest.length();
+    String row = rest.substring(start, end);
+    int comma = row.indexOf(',');
+    if(comma >= 0) file.print(row.substring(comma) + "\n");
+    start = end + 1;
+  }
+  file.close();
+}
+
 static void logCatch()
 {
+  migrateLog();
   fs::File file = LittleFS.open(DXWATCH_LOG, LittleFS.exists(DXWATCH_LOG)? "a" : "w");
   if(!file) return;
 
-  if(!file.size()) file.print("time,frequency_mhz,pi,ps,rssi_dbuv,snr_db\n");
-  const char *now = clockGet();
-  file.printf("%s,%.1f,%04X,%s,%u,%u\n", now && *now? now : "", lastCatch.freq / 1000000.0,
-              lastCatch.pi, lastCatch.ps, lastCatch.rssi, lastCatch.snr);
+  if(!file.size()) file.print(DXLOG_HEADER "\n");
+
+  // UTC date and time, when the clock is known, for logbooks such as FMLIST
+  char utc[24] = "";
+  time_t now = time(nullptr);
+  if(now > 1700000000)
+  {
+    struct tm t;
+    gmtime_r(&now, &t);
+    strftime(utc, sizeof(utc), "%Y-%m-%dT%H:%M:%SZ", &t);
+  }
+
+  // A comma in the name would break the columns
+  char ps[sizeof(lastCatch.ps)];
+  strlcpy(ps, lastCatch.ps, sizeof(ps));
+  for(char *p = ps ; *p ; p++) if(*p == ',' || *p == '"') *p = ' ';
+
+  file.printf("%s,%.1f,%04X,%s,%u,%u\n", utc, lastCatch.freq / 1000000.0,
+              lastCatch.pi, ps, lastCatch.rssi, lastCatch.snr);
   file.close();
+}
+
+void dxWatchWriteLog(Print &out)
+{
+  migrateLog();
+  fs::File file = LittleFS.open(DXWATCH_LOG, "r");
+  if(!file) return;
+  uint8_t buffer[256];
+  while(int n = file.read(buffer, sizeof(buffer))) out.write(buffer, n);
+  file.close();
+}
+
+int dxWatchLoadLog(DxLogEntry *entries, int max)
+{
+  migrateLog();
+  fs::File file = LittleFS.open(DXWATCH_LOG, "r");
+  if(!file) return(0);
+
+  int count = 0;
+  file.readStringUntil('\n');
+  while(file.available())
+  {
+    String row = file.readStringUntil('\n');
+    row.trim();
+    if(!row.length()) continue;
+
+    // time_utc,frequency_mhz,pi,ps,rssi_dbuv,snr_db
+    String field[6];
+    int start = 0;
+    for(int i=0 ; i<6 ; i++)
+    {
+      int comma = row.indexOf(',', start);
+      field[i] = comma < 0? row.substring(start) : row.substring(start, comma);
+      start = comma < 0? row.length() : comma + 1;
+    }
+
+    // Newest first, dropping the oldest ones when there are too many
+    if(count == max) count--;
+    memmove(&entries[1], &entries[0], count * sizeof(DxLogEntry));
+    DxLogEntry *e = &entries[0];
+    strlcpy(e->time, field[0].c_str(), sizeof(e->time));
+    e->freq = (uint32_t)(field[1].toFloat() * 10 + 0.5) * 100000;
+    e->pi = strtoul(field[2].c_str(), nullptr, 16);
+    strlcpy(e->ps, field[3].c_str(), sizeof(e->ps));
+    e->rssi = field[4].toInt();
+    e->snr = field[5].toInt();
+    count++;
+  }
+  file.close();
+  return(count);
+}
+
+bool dxWatchClearLog()
+{
+  return(!LittleFS.exists(DXWATCH_LOG) || LittleFS.remove(DXWATCH_LOG));
 }
 
 bool dxWatchTick()

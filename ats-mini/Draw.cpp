@@ -9,6 +9,7 @@
 #include "Debug.h"
 #include "Notes.h"
 #include "Game.h"
+#include "DxLog.h"
 
 #define PEAK_HOLD_TIME  1500  // Time the S-meter peak marker stays put (msecs)
 #define PEAK_DECAY_TIME   50  // Time for the peak marker to fall by 1dB (msecs)
@@ -175,6 +176,16 @@ void drawBandAndMode(const char *band, const char *mode, int x, int y)
 void drawRadioText(int y, int ymax)
 {
   const char *rt = getRadioText();
+
+  // What is playing, when the station tags it with RT+, says more in one line
+  const char *tagged = (getRDSMode() & RDS_RT)? rtPlusText() : "";
+  if(*tagged)
+  {
+    spr.setTextColor(TH.rds_text);
+    drawMarquee(tagged, 4, y, 312, FONT_SMALL, true);
+    y += 17;
+    rt = "";
+  }
 
   // Draw potentially multi-line radio text
   spr.setTextDatum(TC_DATUM);
@@ -543,6 +554,7 @@ void drawScreen()
   // Release notes and the game take the whole screen
   if(currentCmd==CMD_OTANOTES) { notesDraw(); return; }
   if(currentCmd==CMD_GAME) { gameDraw(); return; }
+  if(currentCmd==CMD_DXLOG) { dxLogDraw(); return; }
 
   // The debug live information takes the whole screen
   if(currentCmd==CMD_DEBUG && debugInfoView)

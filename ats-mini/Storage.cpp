@@ -16,6 +16,12 @@ Preferences prefs;
 
 static uint32_t itIsTimeToSave = 0;       // Preferences to save, or 0 for none
 static bool savingPrefsFlag    = false;   // TRUE: Saving preferences
+static bool prefsFrozen        = false;   // TRUE: A backup is being restored
+
+void prefsFreeze()
+{
+  prefsFrozen = true;
+}
 static uint32_t storeTime      = millis();
 
 // To store any change to preferences, we need at least STORE_TIME
@@ -183,6 +189,9 @@ bool prefsLoadMemory(uint8_t idx, bool openPrefs)
 
 void prefsSave(uint32_t items)
 {
+  // A restore writes the stored settings directly, then the receiver restarts
+  if(prefsFrozen) return;
+
   if(items & SAVE_SETTINGS)
   {
     // Will be saving to settings

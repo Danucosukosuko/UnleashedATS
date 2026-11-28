@@ -140,10 +140,16 @@ The ad hoc protocol is the main remote-control protocol. It can be used over:
 | <kbd>g</kbd> | Seek Down           | Seek down, whatever the Seek menu is set to                                                      |
 | <kbd>X</kbd> | DX Mode             | Toggle DX Mode                                                                                   |
 | <kbd>Z</kbd> | Mono                | Toggle the FM Stereo setting between Auto and Mono                                               |
+| <kbd>K</kbd> | Backup              | Print a backup of the settings, band states, memories, custom themes, station list choices and Wi-Fi networks, between `BACKUP BEGIN` and `BACKUP END` lines. One line per stored value: namespace, key, type and value |
+| <kbd>k</kbd> | Backup without Wi-Fi | The same, leaving out the Wi-Fi networks and their passwords                                     |
+| <kbd>&</kbd> | Restore             | `&BEGIN`, then one `&` line per backup line, then `&END`. Every line is answered with `&OK` or `&ERR` and a reason; `&END` answers `&DONE` with the number of values restored and restarts the receiver |
+| <kbd>D</kbd> | DX Watch Log        | Print the DX Watch log, between `DXLOG BEGIN` and `DXLOG END` lines                              |
 
 Memory names can contain up to 9 printable ASCII characters. Omit the name field to keep the existing name, or append a comma with no name to clear it (for example, `#01,VHF,107900000,FM,`). The `$` command includes non-empty names in its output.
 
-End `F` and `#` commands with CR, LF, or CRLF.
+End `F`, `#` and `&` commands with CR, LF, or CRLF.
+
+The JSON status also has `artist` and `title`, from the RT+ tags of the station, empty when it does not send them.
 
 Incomplete commands time out after 30 seconds without input. Send CR or LF to recover after a timeout or cancel an incomplete theme update.
 

@@ -70,6 +70,8 @@ void statusJsonWrite(Print &out, bool live)
   doc["pi"]     = pi? hex4(pi) : String("");
   doc["pty"]    = printable(getProgramInfo());
   doc["rt"]     = printable(getRadioText());
+  doc["artist"] = printable(rtPlusArtist());
+  doc["title"]  = printable(rtPlusTitle());
   doc["tp"]     = rdsTrafficProgram();
   doc["ta"]     = rdsTrafficAnnouncement();
 

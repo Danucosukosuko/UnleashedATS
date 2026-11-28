@@ -70,6 +70,8 @@ const char *rbdsProgramTypes[32] =
 static char bufStationName[50]  = "";
 static char bufRadioText[100]   = "";
 static char bufProgramInfo[100] = "";
+// RadioText as received, for the RT+ tags that point into it
+static char rawRadioText[65]    = "";
 static uint16_t piCode = 0x0000;
 
 const char *getStationName()
@@ -118,6 +120,7 @@ void clearStationInfo()
   bufProgramInfo[0] = '\0';
   bufRadioText[0]   = '\0'; // Multiline!
   bufRadioText[1]   = '\0';
+  memset(rawRadioText, 0, sizeof(rawRadioText));
   piCode = 0x0000;
 }
 
@@ -140,6 +143,11 @@ static bool showStationName(const char *stationName, bool isLong = false)
   return(false);
 }
 
+const char *getRawRadioText()
+{
+  return(rawRadioText);
+}
+
 static bool showRadioText(const char *radioText, uint8_t width = 32)
 {
   bool changed = false;
@@ -148,6 +156,9 @@ static bool showRadioText(const char *radioText, uint8_t width = 32)
 
   // Must have text
   if(!radioText) return(false);
+
+  memcpy(rawRadioText, radioText, 64);
+  rawRadioText[64] = '\0';
 
   // Skip leading whitespace
   for(i=0 ; (i<64) && radioText[i] && (radioText[i]<=' ') ; i++);

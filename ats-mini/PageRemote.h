@@ -66,6 +66,7 @@ canvas#graph{width:100%;height:130px;display:block;margin:10px 0}
 .bar2 .vol input{accent-color:#1a1206}
 .rt{grid-column:1/3;text-align:center}
 .rt .txt{font:15px "Consolas",monospace;min-height:40px;margin-top:6px;white-space:pre-wrap}
+.rt .np{color:var(--accent,#d9a441);font-weight:600;margin-top:6px}.rt .np:empty{display:none}
 .ident{grid-column:3/5;text-align:center}
 .ident .city{margin-top:6px}
 .ident .more{color:var(--muted);font-size:12px;margin-top:2px}
@@ -156,7 +157,7 @@ dialog p{margin:6px 0;text-align:center}
       <span class="vol">Radio vol <input type="range" id="vol" min="0" max="63" aria-label="Receiver volume"></span>
     </div>
 
-    <div class="panel rt"><div class="label">RADIOTEXT</div><div class="txt" id="rt"></div></div>
+    <div class="panel rt"><div class="label">RADIOTEXT</div><div class="np" id="np"></div><div class="txt" id="rt"></div></div>
     <div class="panel ident"><div class="label" id="identName">&nbsp;</div><div class="city" id="identCity"></div><div class="more" id="identMore"></div></div>
 
     <div class="panel eon"><div class="label">OTHER NETWORKS (EON)</div><table id="eon"></table></div>
@@ -212,6 +213,8 @@ function render(s) {
   $("dxBtn").classList.toggle("on", s.dx);
   $("monoBtn").classList.toggle("on", s.mono);
   $("rt").textContent = s.rt || "";
+  // RT+ tags: what is playing
+  $("np").textContent = [s.artist, s.title].filter(Boolean).join(" – ");
 
   // Station identification from the downloaded lists
   const [lname, ...lcity] = (s.listed || "").split(", ");

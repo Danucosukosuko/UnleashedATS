@@ -8,7 +8,7 @@ Before proceeding, please check whether the receiver board has [BOOT & RESET but
 
 
 ```{tip}
-The easiest way is the [web updater](https://danucosukosuko.github.io/UnleashedATS/update/): in Chrome or Edge on a computer, connect the receiver with its USB cable and press **Install**. It finds the variant of your receiver, keeps the settings and memories, installs the recovery app, and also shows the receiver live, with its screen, while it is connected.
+The easiest way is the [web updater](https://danucosukosuko.github.io/UnleashedATS/update/): in Chrome or Edge on a computer, connect the receiver with its USB cable and press **Install**. It finds the variant of your receiver, keeps the settings and memories, installs the recovery app, and also shows the receiver live, with its screen, while it is connected. It also saves a backup of the settings, memories and custom themes to a file before installing, and puts a backup back when you need it.
 ```
 
 ## Firmware files

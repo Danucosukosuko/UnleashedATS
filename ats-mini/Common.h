@@ -299,6 +299,7 @@ void seekFrequency(int8_t dir);
 const char *getStationName();
 const char *getRdsStationName();
 const char *getRadioText();
+const char *getRawRadioText();
 const char *getProgramInfo();
 const char *getRdsTime();
 uint16_t getRdsPiCode();

@@ -17,6 +17,8 @@
 #include "Notes.h"
 #include "Game.h"
 #include "Recovery.h"
+#include "PtySearch.h"
+#include "DxLog.h"
 #include <LittleFS.h>
 
 #include <time.h>
@@ -125,13 +127,14 @@ static int findBand(uint32_t freq, uint8_t mode, int preferredBand)
 #define MENU_STATIONS    10
 #define MENU_AFLIST      11
 #define MENU_EONLIST     12
-#define MENU_DXWATCH     13
-#define MENU_SQUELCH     14
-#define MENU_BW          15
-#define MENU_AGC_ATT     16
-#define MENU_AVC         17
-#define MENU_SOFTMUTE    18
-#define MENU_SETTINGS    19
+#define MENU_PTYSEARCH   13
+#define MENU_DXWATCH     14
+#define MENU_SQUELCH     15
+#define MENU_BW          16
+#define MENU_AGC_ATT     17
+#define MENU_AVC         18
+#define MENU_SOFTMUTE    19
+#define MENU_SETTINGS    20
 
 int8_t menuIdx = MENU_VOLUME;
 
@@ -150,6 +153,7 @@ static const char *menu[] =
   "Stations",
   "RDS AF",
   "RDS EON",
+  "PTY Search",
   "DX Watch",
   "Squelch",
   "Bandwidth",
@@ -601,7 +605,7 @@ static void clickDebug(bool shortPress)
       break;
   }
 }
-static const char *const dxwActions[] = { "Back", "Start" };
+static const char *const dxwActions[] = { "Back", "Start", "Log" };
 
 uint8_t dspPatchesIdx = DSP_PATCHES_DEFAULT;
 
@@ -2126,6 +2130,7 @@ static void clickMenu(int cmd, bool shortPress)
       break;
     case MENU_AFLIST:   enterAfList();   break;
     case MENU_EONLIST:  enterEonList();  break;
+    case MENU_PTYSEARCH: ptySearchOpen(); break;
   }
 }
 
@@ -2277,6 +2282,8 @@ bool doSideBar(uint16_t cmd, int16_t enc, int16_t enca)
       updateFwArmed = false;
       break;
     case CMD_OTANOTES:   notesRotate(enc);break;
+    case CMD_DXLOG:      dxLogRotate(scrollDirection * enc);break;
+    case CMD_PTYSEARCH:  ptySearchRotate(scrollDirection * enc);break;
     case CMD_GAME:       gameRotate(enca);break;
     case CMD_ABOUT:      doAbout(enc);break;
     default:             return(false);
@@ -2294,6 +2301,8 @@ bool clickHandler(uint16_t cmd, bool shortPress)
     case CMD_SETTINGS: clickSettings(settingsIdx, shortPress);break;
     case CMD_UPDATEFW: clickUpdateFw();break;
     case CMD_OTANOTES: notesClick();break;
+    case CMD_DXLOG:    dxLogClick();break;
+    case CMD_PTYSEARCH: ptySearchClick();break;
     case CMD_GAME:     gameClick();break;
     case CMD_MEMORY:   clickMemory(memoryIdx, shortPress);break;
     case CMD_BLEMODE:  clickBleMode(bleModeMenuIdx, shortPress);break;
@@ -2335,6 +2344,7 @@ bool clickHandler(uint16_t cmd, bool shortPress)
       {
         statusShow(nullptr);
         if(dxwIdx==1) dxWatchStart();
+        if(dxwIdx==2) { dxLogOpen(); break; }
         if(dxWatchPhase()==DXW_OFF) currentCmd = CMD_NONE;
       }
       else
@@ -3435,6 +3445,41 @@ static void drawAutoStore(int x, int y, int sx)
   }
 }
 
+static void drawPtySearch(int x, int y, int sx)
+{
+  char line[16];
+
+  if(ptySearchPhase() == PTYS_SEARCHING)
+  {
+    drawCommon(menu[MENU_PTYSEARCH], x, y, sx);
+    spr.setTextDatum(MC_DATUM);
+    spr.setTextColor(TH.menu_param);
+    drawMarquee(ptySearchName(ptySearchChoice()), 8+x, 34+y, 62+sx, FONT_SMALL, true);
+    sprintf(line, "%.1f", ptySearchFrequency() / 1000000.0);
+    spr.setTextDatum(MC_DATUM);
+    spr.drawString(line, 40+x+(sx/2), 66+y, FONT_LARGE);
+    spr.setTextColor(TH.menu_item);
+    spr.drawString("Click: stop", 40+x+(sx/2), 100+y, FONT_SMALL);
+    return;
+  }
+
+  // The programme types, around the one selected
+  drawCommon(menu[MENU_PTYSEARCH], x, y, sx, true);
+  int count = ptySearchChoices();
+  for(int i=-2 ; i<3 && count ; i++)
+  {
+    int idx = ((ptySearchChoice() + i) % count + count) % count;
+    if(i == 0)
+    {
+      drawZoomedMenu(ptySearchName(idx));
+      spr.setTextColor(TH.menu_hl_text, TH.menu_hl_bg);
+    }
+    else spr.setTextColor(TH.menu_item);
+    spr.setTextDatum(MC_DATUM);
+    drawMarquee(ptySearchName(idx), 8+x, 57+y+(i*16), 62+sx, FONT_SMALL, i == 0);
+  }
+}
+
 static void drawDxWatch(int x, int y, int sx)
 {
   if(dxWatchPhase()==DXW_OFF)
@@ -3573,6 +3618,7 @@ void drawSideBar(uint16_t cmd, int x, int y, int sx)
     case CMD_EONLIST:    drawEonList(x, y, sx);    break;
     case CMD_DXMODE:     drawDxMode(x, y, sx);     break;
     case CMD_DXWATCH:    drawDxWatch(x, y, sx);    break;
+    case CMD_PTYSEARCH:  drawPtySearch(x, y, sx);  break;
     case CMD_BATTERY:
       drawCommon(settings[MENU_BATTERY], x, y, sx);
       drawZoomedMenu(settings[MENU_BATTERY]);

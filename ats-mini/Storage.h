@@ -18,6 +18,8 @@ void prefsTickTime();
 void prefsInvalidate();
 bool prefsAreWritten();
 bool nvsErase();
+// Stop saving the settings, while a backup is restored
+void prefsFreeze();
 
 bool diskInit(bool force = false);
 

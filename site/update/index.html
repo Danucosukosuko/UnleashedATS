@@ -52,6 +52,12 @@
   .ps { font: 600 1.9em/1.1 var(--mono); letter-spacing: .12em; }
   .rt { grid-column: 1 / -1; color: var(--muted); min-height: 1.4em; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .afs { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+  .np { grid-column: 1 / -1; color: var(--amber); font-weight: 600; min-height: 0; }
+  .np:not(:empty)::before { content: "♪ "; }
+  .logtable { max-height: 210px; overflow: auto; margin-top: 10px; border-radius: 8px; background: var(--panel2); }
+  .logtable table { width: 100%; border-collapse: collapse; font: .84em var(--mono); }
+  .logtable td, .logtable th { padding: 4px 8px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  .logtable th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--panel2); }
   .afs span { font: .82em var(--mono); background: var(--panel2); border-radius: 4px; padding: 1px 6px; color: var(--muted); }
   .controls { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 14px; }
   .ctl { display: flex; align-items: center; justify-content: space-between; background: var(--panel2); border: 1px solid var(--line);
@@ -117,6 +123,7 @@
         <span class="muted small">SNR</span><div class="bar"><i id="snrBar" style="width:0"></i></div><span id="snr" class="small">-</span>
       </div>
       <div class="rds">
+        <div class="np" id="np"></div>
         <div class="ps" id="ps">&nbsp;</div>
         <div class="muted small" style="text-align:right" id="pi"></div>
         <div class="rt" id="rt"></div>
@@ -156,6 +163,35 @@
     <p class="muted small" id="fwLine"></p>
   </section>
 
+  <!-- Backup -->
+  <section class="card">
+    <h2>Backup</h2>
+    <p class="muted small" style="margin-top:0">Settings, band states, memories, custom themes and station list choices, saved to a file on this computer and put back whenever you need them.</p>
+    <label class="small"><input type="checkbox" id="withNetwork"> Include the Wi-Fi networks and their passwords</label>
+    <div class="tune">
+      <button id="backupSave" disabled>Save a backup</button>
+      <input type="file" id="backupFile" accept=".txt" hidden>
+      <button id="backupRestore" disabled>Restore a backup…</button>
+    </div>
+    <p class="small" id="backupState">&nbsp;</p>
+  </section>
+
+  <!-- DX Watch log -->
+  <section class="card">
+    <h2>DX Watch log</h2>
+    <div class="tune" style="margin-top:0">
+      <button id="logRead" disabled>Read the log</button>
+      <button id="logCsv" disabled>Save CSV</button>
+      <button id="logUrds" disabled>Save for FMLIST (URDS)</button>
+    </div>
+    <div class="tune small">
+      <label>Your location <input id="qth" placeholder="IN80do, or 40.42,-3.70" style="width:13em"></label>
+    </div>
+    <div class="logtable"><table id="logTable"></table></div>
+    <p class="muted small" id="logState">The catches of DX Watch, newest first. The URDS file is the RDS log format of FMLIST: check it against the FMLIST database with the
+      <a href="https://highpoint.fmdx.org/manuals/urds-log-validator-Documentation.html">URDS Log Validator</a> before uploading it.</p>
+  </section>
+
   <!-- Updater -->
   <section class="card wide">
     <h2>Firmware update</h2>
@@ -182,6 +218,7 @@
             <span><b>From a file</b><small>A firmware <code>.bin</code> from this computer: <code>-ota.bin</code> or <code>ats-mini.ino.bin</code> goes to the firmware slot, <code>merged.bin</code> to the whole flash.</small>
             <input type="file" id="file" accept=".bin" style="margin-top:6px"></span></label>
         </div>
+        <label class="small" style="display:block; margin: 0 0 10px"><input type="checkbox" id="backupFirst" checked> Save a backup to this computer first</label>
         <button id="flash" class="primary">Install</button>
         <span class="muted small" id="flashHint">The receiver restarts into its download mode by itself, no button needed.</span>
         <div style="margin-top:12px"><progress id="progress" max="100" value="0"></progress>
@@ -205,7 +242,8 @@
 const REPO = 'Danucosukosuko/UnleashedATS';
 const ESPTOOL = 'https://cdn.jsdelivr.net/npm/esptool-js@0.7.1/+esm';
 const VID = 0x303a;
-const DEMO = new URLSearchParams(location.search).get('demo');
+const params = new URLSearchParams(location.search);
+const DEMO = params.has('demo') ? (params.get('demo') || 'panel') : null;
 const $ = (id) => document.getElementById(id);
 const enc = new TextEncoder(), dec = new TextDecoder();
 
@@ -281,6 +319,7 @@ async function connect() {
   linkState('Connected', 'ok');
   $('connect').textContent = 'Disconnect';
   $('shot').disabled = false;
+  ['backupSave', 'backupRestore', 'logRead'].forEach((id) => $(id).disabled = false);
   // The ad hoc J command switches the JSON status monitor on and off
   await send('J'); monitorOn = true;
   setTimeout(() => { if (!status) { $('rxIdle').innerHTML = 'No answer from the firmware. It may be off, in the recovery app, or with USB Mode not set to ad hoc. You can still install a firmware below.'; } }, 3500);
@@ -297,6 +336,7 @@ async function disconnect() {
   linkState('Not connected', 'off');
   $('connect').textContent = 'Connect receiver';
   $('shot').disabled = true;
+  ['backupSave', 'backupRestore', 'logRead'].forEach((id) => $(id).disabled = true);
   $('rxLive').hidden = true; $('rxIdle').hidden = false;
 }
 
@@ -319,10 +359,150 @@ function receive(bytes) {
   while ((nl = text.indexOf('\n')) >= 0) {
     const line = text.slice(0, nl).trim();
     text = text.slice(nl + 1);
+    // Framed text such as a backup or the DX log
+    if (block) {
+      if (line === block.begin) { block.open = true; continue; }
+      if (line === block.end && block.open) { const b = block; block = null; b.resolve(b.lines); continue; }
+      if (block.open) { block.lines.push(line); continue; }
+    }
+    // Answers to restore lines
+    if (line.startsWith('&') && replyWaiter) { const w = replyWaiter; replyWaiter = null; w(line); continue; }
     if (line.startsWith('{')) { try { showStatus(JSON.parse(line)); } catch (e) {} }
     else if (line) log(line);
   }
-  if (text.length > 20000) text = '';
+  if (text.length > 200000) text = '';
+}
+
+// ---------- commands with an answer ----------
+let block = null, replyWaiter = null;
+
+async function quiet() {
+  // The JSON monitor would mix its lines into the answer
+  const was = monitorOn;
+  if (was) { await send('J'); monitorOn = false; await new Promise((r) => setTimeout(r, 250)); }
+  return was;
+}
+async function resume(was) { if (was && port) { await send('J'); monitorOn = true; } }
+
+async function readBlock(cmd, begin, end, timeout) {
+  const was = await quiet();
+  try {
+    return await new Promise((resolve, reject) => {
+      block = { begin, end, lines: [], open: false, resolve };
+      setTimeout(() => { if (block) { block = null; reject(new Error('the receiver did not answer')); } }, timeout || 15000);
+      send(cmd);
+    });
+  } finally { await resume(was); }
+}
+
+function reply(line, timeout) {
+  return new Promise((resolve, reject) => {
+    replyWaiter = resolve;
+    setTimeout(() => { if (replyWaiter === resolve) { replyWaiter = null; reject(new Error('no answer to ' + line.slice(0, 20))); } }, timeout || 4000);
+    send(line + '\n');
+  });
+}
+
+function download(name, content, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content], { type: type || 'text/plain' }));
+  a.download = name;
+  a.click();
+}
+const today = () => new Date().toISOString().slice(0, 10);
+const CRLF = '\r\n';
+
+// ---------- backup ----------
+async function backupSave(silent) {
+  const lines = await readBlock($('withNetwork').checked ? 'K' : 'k', 'BACKUP BEGIN', 'BACKUP END');
+  const values = lines.filter((l) => l && !l.startsWith('#')).length;
+  download('unleashedats-backup-' + today() + '.txt', lines.join('\r\n') + '\r\n');
+  $('backupState').textContent = 'Saved ' + values + ' values.';
+  return values;
+}
+
+async function backupRestore(file) {
+  const lines = (await file.text()).split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
+  if (!lines.length) { $('backupState').textContent = 'That file has no backup in it.'; return; }
+  if (!confirm('Restore ' + lines.length + ' values from ' + file.name + '? The settings and memories on the receiver are replaced, and it restarts.')) return;
+  const was = await quiet();
+  try {
+    if (!(await reply('&BEGIN')).startsWith('&OK')) throw new Error('the receiver refused the restore');
+    let errors = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const answer = await reply('&' + lines[i]);
+      if (!answer.startsWith('&OK')) { errors++; log('Restore: ' + lines[i].slice(0, 40) + ': ' + answer.slice(5)); }
+      if (i % 5 === 0) $('backupState').textContent = 'Restoring… ' + (i + 1) + ' of ' + lines.length;
+    }
+    const done = await reply('&END', 6000).catch(() => '&DONE');
+    $('backupState').textContent = 'Restored ' + (done.split(' ')[1] || lines.length - errors) + ' values' + (errors ? ', ' + errors + ' left out' : '') + '. The receiver restarts.';
+    setTimeout(disconnect, 500);
+  } catch (e) {
+    $('backupState').textContent = 'Restore failed: ' + e.message;
+    await resume(was);
+  }
+}
+
+// ---------- DX Watch log ----------
+let dxRows = [];
+
+function parseLog(lines) {
+  const header = (lines[0] || '').split(',');
+  const col = (name) => header.indexOf(name);
+  const t = col('time_utc'), f = col('frequency_mhz'), pi = col('pi'), ps = col('ps'), r = col('rssi_dbuv'), s = col('snr_db');
+  return lines.slice(1).filter(Boolean).map((l) => {
+    const v = l.split(',');
+    return { time: t >= 0 ? v[t] : '', mhz: v[f], pi: v[pi], ps: v[ps] || '', rssi: v[r], snr: v[s] };
+  }).reverse();
+}
+
+function showLog() {
+  const rows = dxRows.map((x) => '<tr><td>' + escapeHtml(x.time ? x.time.replace('T', ' ').replace('Z', '') : '—') + '</td><td>' + x.mhz +
+    '</td><td>' + escapeHtml(x.pi) + '</td><td>' + escapeHtml(x.ps) + '</td><td>' + x.rssi + '</td></tr>');
+  $('logTable').innerHTML = '<tr><th>UTC</th><th>MHz</th><th>PI</th><th>PS</th><th>dBµV</th></tr>' +
+    (rows.join('') || '<tr><td colspan="5">No catches yet</td></tr>');
+  $('logCsv').disabled = $('logUrds').disabled = !dxRows.length;
+}
+
+async function logRead() {
+  const lines = await readBlock('D', 'DXLOG BEGIN', 'DXLOG END');
+  dxRows = parseLog(lines);
+  dxRaw = lines;
+  showLog();
+}
+let dxRaw = [];
+
+// Maidenhead locator or "lat,lon" to coordinates
+function qthCoordinates() {
+  const q = $('qth').value.trim();
+  localStorage.setItem('qth', q);
+  const ll = /^(-?\d+(?:\.\d+)?)\s*[,; ]\s*(-?\d+(?:\.\d+)?)$/.exec(q);
+  if (ll) return [+ll[1], +ll[2]];
+  const m = /^([A-R]{2})(\d{2})([A-X]{2})?$/i.exec(q);
+  if (!m) return null;
+  const up = m[1].toUpperCase(), sub = (m[3] || 'LL').toUpperCase();
+  let lon = (up.charCodeAt(0) - 65) * 20 - 180 + (+m[2][0]) * 2 + (sub.charCodeAt(0) - 65) / 12 + 1 / 24;
+  let lat = (up.charCodeAt(1) - 65) * 10 - 90 + (+m[2][1]) + (sub.charCodeAt(1) - 65) / 24 + 1 / 48;
+  return [Math.round(lat * 10000) / 10000, Math.round(lon * 10000) / 10000];
+}
+
+function urds() {
+  // URDS: record type 30 for FM; 3 frequency (Hz), 5 signal (dBµV), 8/9 receiver
+  // latitude/longitude, 12 UTC time (ISO 8601), 13 PI, 15 PS, 48 comment
+  const where = qthCoordinates();
+  if (!where) { $('logState').textContent = 'Enter your location first: a Maidenhead locator such as IN80do, or latitude,longitude.'; return; }
+  const quote = (v) => /[",]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+  let skipped = 0;
+  const rows = dxRows.slice().reverse().filter((x) => { if (!x.time) skipped++; return x.time; }).map((x) => {
+    const f = new Array(49).fill('');
+    f[0] = '30'; f[3] = String(Math.round(parseFloat(x.mhz) * 1e6)); f[5] = String(x.rssi);
+    f[8] = String(where[0]); f[9] = String(where[1]); f[12] = x.time; f[13] = x.pi; f[15] = x.ps;
+    f[48] = 'UnleashedATS DX Watch';
+    return f.map(quote).join(',');
+  });
+  if (!rows.length) { $('logState').textContent = 'No catch has a UTC time yet: set the clock of the receiver, or let it get the time over Wi-Fi.'; return; }
+  download('unleashedats-dxlog-urds-' + today() + '.csv', rows.join('\r\n') + '\r\n', 'text/csv');
+  $('logState').textContent = 'Saved ' + rows.length + ' catches' + (skipped ? ', ' + skipped + ' without a UTC time left out' : '') + '.';
 }
 
 // ---------- status ----------
@@ -342,6 +522,8 @@ function showStatus(s) {
   $('snr').textContent = s.snr + ' dB'; $('snrBar').style.width = Math.min(100, s.snr * 100 / 30) + '%';
   $('ps').textContent = s.ps || s.name || ' ';
   $('pi').textContent = [s.pi && 'PI ' + s.pi, s.pty].filter(Boolean).join(' · ');
+  // RT+ tags: what is playing
+  $('np').textContent = [s.artist, s.title].filter(Boolean).join(' – ');
   $('rt').textContent = s.rt || s.listed || '';
   const afs = (s.af || []).map((f) => '<span>AF ' + (f / 1e6).toFixed(1) + '</span>')
     .concat((s.eon || []).map((n) => '<span>EON ' + escapeHtml(n.ps || n.pi) + '</span>'));
@@ -421,6 +603,16 @@ async function flash() {
   if (mode === 'file' && !file) { progress(0, 'Choose a file first.'); return; }
   if (DEMO) { progress(64, 'Writing the firmware: 1.21 of 1.85 MB'); return; }
   if (!('serial' in navigator)) return;
+
+  // A copy of the settings on this computer, while the firmware can still answer
+  if ($('backupFirst').checked) {
+    if (!port) { await connect(); await new Promise((r) => setTimeout(r, 3000)); }
+    if (status) {
+      progress(1, 'Saving a backup...');
+      try { log('Backup saved: ' + (await backupSave()) + ' values'); }
+      catch (e) { if (!confirm('The backup failed (' + e.message + '). Install anyway?')) { progress(0, ''); return; } }
+    } else log('No backup: the firmware did not answer.');
+  }
 
   $('flash').disabled = true;
   let transport = null;
@@ -506,6 +698,13 @@ $('connect').onclick = connect;
 $('shot').onclick = shoot;
 $('autoShot').onchange = () => { clearInterval(autoTimer); if ($('autoShot').checked) autoTimer = setInterval(shoot, 2500); };
 $('flash').onclick = flash;
+$('backupSave').onclick = () => backupSave().catch((e) => $('backupState').textContent = 'Backup failed: ' + e.message);
+$('backupRestore').onclick = () => $('backupFile').click();
+$('backupFile').onchange = () => { const f = $('backupFile').files[0]; $('backupFile').value = ''; if (f) backupRestore(f); };
+$('logRead').onclick = () => logRead().catch((e) => $('logState').textContent = 'Unable to read the log: ' + e.message);
+$('logCsv').onclick = () => download('unleashedats-dxlog-' + today() + '.csv', dxRaw.join(CRLF) + CRLF, 'text/csv');
+$('logUrds').onclick = urds;
+$('qth').value = localStorage.getItem('qth') || '';
 document.querySelectorAll('[data-cmd]').forEach((b) => b.onclick = () => send(b.dataset.cmd));
 $('tuneBtn').onclick = () => {
   const v = parseFloat($('freqInput').value.replace(',', '.'));
@@ -520,8 +719,16 @@ if (DEMO) {
   showStatus({ fw: 'UnleashedATS F/W: v1.01-2.46 Nov 28 2026', freq: 98100000, band: 'VHF', mode: 'FM', step: '100k', bw: 'Auto',
     agc: 0, vol: 35, rssi: 52, snr: 26, stereo: true, dx: false, mono: false, tp: true, ta: false,
     batt_v: '3.94', batt_pct: 72, ps: 'LOS40', pi: 'E215', pty: 'Pop Music', rt: 'LOS40 - Los numeros 1 de la semana',
-    af: [89200000, 93900000, 101300000, 104700000], eon: [{ pi: 'E211', ps: 'SER' }, { pi: 'E2A1', ps: 'LOS40 CL' }] });
+    af: [89200000, 93900000, 101300000, 104700000], eon: [{ pi: 'E211', ps: 'SER' }, { pi: 'E2A1', ps: 'LOS40 CL' }],
+    artist: 'Aitana', title: 'Los Angeles' });
   shoot();
+  ['backupSave', 'backupRestore', 'logRead'].forEach((id) => $(id).disabled = false);
+  $('backupState').textContent = 'Saved 186 values.';
+  dxRaw = ['time_utc,frequency_mhz,pi,ps,rssi_dbuv,snr_db',
+    '2026-11-27T19:42:10Z,96.3,63A1,RTP ANT1,21,7', '2026-11-27T20:05:44Z,89.6,F201,RTL,18,6',
+    '2026-11-28T07:18:02Z,101.9,E4C2,COPE MUR,24,9', '2026-11-28T07:31:55Z,92.7,E2B4,CAD-100,19,6'];
+  dxRows = parseLog(dxRaw); showLog();
+  if (!$('qth').value) $('qth').value = 'IN80do';
   if (DEMO === 'flash') { document.querySelector('input[value=keep]').checked = true; progress(64, 'Writing: 1.92 of 3.00 MB');
     log('Chip: ESP32-S3 (QFN56) (revision v0.2), Wi-Fi, BLE, Embedded PSRAM 8MB (AP_3v3)');
     log('Variant: ospi'); log('Compressed 1935200 bytes to 1264218...'); log('Writing at 0x00010000... (34%)'); log('Writing at 0x000f0000... (64%)'); }

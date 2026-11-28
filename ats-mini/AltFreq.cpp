@@ -42,11 +42,94 @@ static uint32_t statTypes[32];       // RDS groups per type and version
 static uint32_t afBadTime   = 0;      // Time the reception went bad, or zero
 static uint32_t afTriedTime = 0;      // Time of the last attempt
 
+// RadioText Plus: tags marking the title and the artist inside RadioText
+#define RTP_AID      0x4BD7   // Open data application identifier of RT+
+#define RTP_TITLE    1        // ITEM.TITLE
+#define RTP_ARTIST   4        // ITEM.ARTIST
+static uint8_t rtpGroup = 0xFF;   // Group carrying RT+, as type * 2 + version
+static bool rtpToggle = false;    // Flips with every new item
+static bool rtpRunning = false;   // The item is on the air
+static struct { uint8_t start, length; bool valid; } rtpTitle, rtpArtist;
+
+static void clearRtPlus()
+{
+  rtpGroup = 0xFF;
+  rtpRunning = false;
+  rtpTitle.valid = rtpArtist.valid = false;
+}
+
 static void clearLists()
 {
   trafficProgram = trafficAnnounce = false;
   afTotal = afNext = eonTotal = 0;
   afBadTime = 0;
+  clearRtPlus();
+}
+
+static void rtPlusTag(uint8_t type, uint8_t start, uint8_t length)
+{
+  // The length marker counts the characters after the first one
+  if(type == RTP_TITLE)  rtpTitle  = { start, (uint8_t)(length + 1), true };
+  if(type == RTP_ARTIST) rtpArtist = { start, (uint8_t)(length + 1), true };
+}
+
+static void rtPlusGroup(uint16_t blockB, uint16_t blockC, uint16_t blockD)
+{
+  bool toggle = blockB & 0x10;
+  rtpRunning = blockB & 0x08;
+
+  // A new item drops the tags of the previous one
+  if(toggle != rtpToggle)
+  {
+    rtpToggle = toggle;
+    rtpTitle.valid = rtpArtist.valid = false;
+  }
+
+  // Two tags: content type, start and length, packed over blocks B to D
+  rtPlusTag(((blockB & 0x07) << 3) | (blockC >> 13), (blockC >> 7) & 0x3F, (blockC >> 1) & 0x3F);
+  rtPlusTag(((blockC & 0x01) << 5) | (blockD >> 11), (blockD >> 5) & 0x3F, blockD & 0x1F);
+}
+
+static bool rtPlusCopy(char *out, size_t size, uint8_t start, uint8_t length)
+{
+  const char *rt = getRawRadioText();
+  size_t n = 0;
+  if(start + length > 64) return(false);
+  for(int i=start ; i<start + length && n<size - 1 ; i++)
+  {
+    // Characters not received yet
+    if(!rt[i]) return(false);
+    out[n++] = (rt[i]>=' ' && rt[i]<='~')? rt[i] : ' ';
+  }
+  out[n] = '\0';
+  // Drop the padding around the tag
+  while(n && out[n-1]==' ') out[--n] = '\0';
+  size_t lead = strspn(out, " ");
+  memmove(out, out + lead, n - lead + 1);
+  return(out[0] != '\0');
+}
+
+const char *rtPlusTitle()
+{
+  static char text[65];
+  bool shown = currentMode==FM && listShown && rtpRunning && rtpTitle.valid;
+  return(shown && rtPlusCopy(text, sizeof(text), rtpTitle.start, rtpTitle.length)? text : "");
+}
+
+const char *rtPlusArtist()
+{
+  static char text[65];
+  bool shown = currentMode==FM && listShown && rtpRunning && rtpArtist.valid;
+  return(shown && rtPlusCopy(text, sizeof(text), rtpArtist.start, rtpArtist.length)? text : "");
+}
+
+const char *rtPlusText()
+{
+  static char text[132];
+  const char *title = rtPlusTitle(), *artist = rtPlusArtist();
+  if(*title && *artist) snprintf(text, sizeof(text), "%s - %s", artist, title);
+  else strlcpy(text, *title? title : artist, sizeof(text));
+  return(text);
 }
 
 void rdsExtraReset()
@@ -158,6 +241,19 @@ void rdsExtraGroup()
   // Every group carries TP, groups 0 and 15B also carry TA
   trafficProgram = blockB & 0x0400;
   if(type==0 || (type==15 && versionB)) trafficAnnounce = blockB & 0x0010;
+
+  // Group 3A announces open data applications, RT+ among them, and the
+  // group type that carries them
+  if(type==3 && !versionB && blockD==RTP_AID)
+  {
+    rtpGroup = blockB & 0x1F;
+    return;
+  }
+  if(rtpGroup!=0xFF && ((type << 1) | versionB)==rtpGroup)
+  {
+    rtPlusGroup(blockB, blockC, blockD);
+    return;
+  }
 
   // Group 0A carries two alternative frequency codes in block C
   if(type==0 && !versionB)
