@@ -73,8 +73,8 @@
   .device { background: linear-gradient(160deg, #3a2f26, #1d1712); border-radius: 34px; padding: 22px; box-shadow: 0 40px 70px -30px rgba(60, 30, 5, .55);
             transform: rotate(-2.5deg); transition: transform .6s cubic-bezier(.2, .9, .3, 1.2); }
   .device:hover { transform: rotate(0deg) scale(1.02); }
-  .device .screen { border-radius: 16px; overflow: hidden; aspect-ratio: 975 / 520; background: #000; }
-  .device .screen img { width: 204%; max-width: none; margin: -3% 0 0 -1.2%; }
+  .device .screen { border-radius: 16px; overflow: hidden; aspect-ratio: 320 / 170; background: #000; }
+  .device .screen img { width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; }
   .device .knob { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; color: #b9a58a; font-weight: 800; font-size: .9em; }
   .device .knob i { width: 46px; height: 46px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #6b5a4a, #2a211a); box-shadow: inset 0 2px 4px rgba(255, 255, 255, .12), 0 6px 14px rgba(0, 0, 0, .4); }
 
@@ -98,7 +98,14 @@
   .why .card .icon { flex: none; margin: 0; }
 
   /* Gallery */
-  .shots { display: grid; grid-template-columns: 1.4fr 1fr; gap: 22px; }
+  .screens { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 22px; margin-bottom: 22px; }
+  .tile { margin: 0; background: var(--card); border-radius: var(--radius); padding: 12px; box-shadow: var(--shadow); transition: transform .35s cubic-bezier(.2, .9, .3, 1.3), box-shadow .35s; }
+  .tile:hover { transform: translateY(-6px) rotate(-.6deg); box-shadow: var(--shadow-hover); }
+  .tile img { border-radius: 14px; background: #000; aspect-ratio: 320 / 170; width: 100%; image-rendering: pixelated; }
+  .tile figcaption { padding: 10px 6px 2px; }
+  .tile b { display: block; font-weight: 800; }
+  .tile span { color: var(--muted); font-size: .92em; }
+  .shots { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
   @media (max-width: 900px) { .shots { grid-template-columns: 1fr; } }
   .shot { background: var(--card); border-radius: var(--radius); padding: 14px; box-shadow: var(--shadow); transition: transform .35s; }
   .shot:hover { transform: translateY(-5px); }
@@ -164,7 +171,7 @@
       </div>
     </div>
     <div class="device reveal">
-      <div class="screen"><img src="assets/welcome.png" alt="The UnleashedATS welcome screen on the receiver"></div>
+      <div class="screen"><img src="assets/screens/rds-af.png" alt="The receiver on 98.1 MHz with its RDS AF list open"></div>
       <div class="knob"><span>ATS-Mini · UnleashedATS</span><i></i></div>
     </div>
   </div>
@@ -212,13 +219,21 @@
   <div class="wrap">
     <div class="kicker">Have a look</div>
     <h2>On the receiver and on your screen</h2>
-    <p class="intro">The new menus on the receiver, the FM-DX style remote and the web updater.</p>
+    <p class="intro">Real screens of the receiver running UnleashedATS, the FM-DX style remote and the web updater.</p>
+    <div class="screens">
+      <figure class="tile reveal"><img src="assets/screens/menu.png" alt=""><figcaption><b>New menu entries</b><span>Mem Scan, Auto Store, Stations, RDS AF and EON</span></figcaption></figure>
+      <figure class="tile reveal"><img src="assets/screens/stations-spain.png" alt=""><figcaption><b>Stations by province</b><span>Browse your country's list and tune</span></figcaption></figure>
+      <figure class="tile reveal"><img src="assets/screens/listed-name.png" alt=""><figcaption><b>Names without RDS</b><span>Your province's stations, named on screen</span></figcaption></figure>
+      <figure class="tile reveal"><img src="assets/screens/rds-af.png" alt=""><figcaption><b>RDS AF list</b><span>Every frequency of the station, ready to tune</span></figcaption></figure>
+      <figure class="tile reveal"><img src="assets/screens/eon-networks.png" alt=""><figcaption><b>RDS EON</b><span>The other networks a station announces</span></figcaption></figure>
+      <figure class="tile reveal"><img src="assets/screens/auto-store.png" alt=""><figcaption><b>Auto Store</b><span>Fill the memories from a band sweep</span></figcaption></figure>
+      <figure class="tile reveal"><img src="assets/screens/mem-scan.png" alt=""><figcaption><b>Mem Scan</b><span>Hop through the memories that are live</span></figcaption></figure>
+      <figure class="tile reveal"><img src="assets/screens/dx-mode.png" alt=""><figcaption><b>DX Mode</b><span>For the weakest stations</span></figcaption></figure>
+      <figure class="tile reveal"><img src="assets/screens/load-europe.png" alt=""><figcaption><b>Load Stations</b><span>Pick a country to download</span></figcaption></figure>
+    </div>
     <div class="shots">
-      <figure class="shot reveal" style="margin:0"><img src="assets/menus.png" alt="The new menus on the receiver"><figcaption>Mem Scan, Auto Store, station lists, RDS AF and EON, DX Mode</figcaption></figure>
-      <div class="stack">
-        <figure class="shot reveal" style="margin:0"><img src="assets/remote.png" alt="The FM-DX style remote page"><figcaption>The FM-DX style remote</figcaption></figure>
-        <figure class="shot reveal" style="margin:0"><img src="assets/updater.png" alt="The web updater"><figcaption>The web updater, with the receiver live</figcaption></figure>
-      </div>
+      <figure class="shot reveal" style="margin:0"><img src="assets/remote.png" alt="The FM-DX style remote page"><figcaption>The FM-DX style remote, on the receiver's own web server</figcaption></figure>
+      <figure class="shot reveal" style="margin:0"><img src="assets/updater.png" alt="The web updater"><figcaption>The web updater, with the receiver live while it installs</figcaption></figure>
     </div>
   </div>
 </section>
