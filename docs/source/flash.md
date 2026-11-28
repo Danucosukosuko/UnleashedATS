@@ -6,6 +6,11 @@ Flashing the firmware can make your receiver unusable.
 
 Before proceeding, please check whether the receiver board has [BOOT & RESET buttons](hardware.md#boot-and-reset-buttons) soldered, which can help to [recover](recovery.md#recovery) it. Also there is a way to [back up](recovery.md#backup) the stock firmware, so you can roll back to it if you want.
 
+
+```{tip}
+The easiest way is the [web updater](https://danucosukosuko.github.io/UnleashedATS/updater/): in Chrome or Edge on a computer, connect the receiver with its USB cable and press **Install**. It finds the variant of your receiver, keeps the settings and memories, installs the recovery app, and also shows the receiver live, with its screen, while it is connected.
+```
+
 ## Firmware files
 
 ```{hint}

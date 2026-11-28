@@ -24,7 +24,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    permissions: {}
+    permissions:
+      contents: read
     strategy:
       fail-fast: true
 
@@ -54,6 +55,27 @@ jobs:
         run: |
           uv run sphinx-build --fail-on-warning --nitpicky docs/source docs/build
 
+      - name: Add the latest firmware for the web updater
+        # Release downloads have no CORS headers, so the web updater gets the
+        # files of the latest release from the site itself
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          OUT=docs/build/updater/firmware
+          TAG=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          echo "Latest release: $TAG"
+          for V in ospi qspi lilygo-t-embed; do
+            rm -rf "/tmp/fw/$V" && mkdir -p "/tmp/fw/$V" "$OUT/$V"
+            gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "UnleashedATS-$TAG-$V.zip" --dir "/tmp/fw/$V"
+            unzip -q -o "/tmp/fw/$V/UnleashedATS-$TAG-$V.zip" -d "/tmp/fw/$V"
+            D=$(dirname "$(find "/tmp/fw/$V" -name ats-mini.ino.bin | head -1)")
+            cp "$D/ats-mini.ino.bootloader.bin" "$D/ats-mini.ino.partitions.bin" "$D/boot_app0.bin" "$D/ats-mini.ino.bin" "$OUT/$V/"
+            if [ -f "$D/recovery.bin" ]; then cp "$D/recovery.bin" "$OUT/$V/"; fi
+          done
+          echo "{\"tag\": \"$TAG\"}" > "$OUT/release.json"
+          ls -R "$OUT"
+
       - name: Upload the docs artifact
         id: artifact
         uses: actions/upload-pages-artifact@v5
@@ -61,7 +83,7 @@ jobs:
           path: docs/build
 
   deploy:
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' }}
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

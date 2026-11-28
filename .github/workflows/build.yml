@@ -234,6 +234,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      actions: write
     strategy:
       fail-fast: true
     steps:
@@ -276,3 +277,8 @@ jobs:
         run: |
           # shellcheck disable=SC2086
           gh release upload "$SLUG" $FILENAMES --repo '${{ github.repository }}' --clobber
+      - name: Refresh the web updater
+        # The docs site carries the latest release for the web updater
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: gh workflow run docs.yml --repo '${{ github.repository }}' --ref main

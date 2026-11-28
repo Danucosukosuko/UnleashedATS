@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UnleashedATS Web Updater</title>
+<link rel="icon" href="../_static/unleashedats-logo.svg">
+<style>
+  :root {
+    --bg: #14100a; --panel: #1f1912; --panel2: #2a2218; --line: #3a3020;
+    --text: #f2e6cf; --muted: #b3a68c; --dim: #7d725f;
+    --amber: #f6cf74; --amber2: #c98d2c; --ok: #7fd17f; --warn: #ff7a6b;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, "Segoe UI", sans-serif; }
+  a { color: var(--amber); }
+  header { display: flex; align-items: center; gap: 14px; padding: 18px 24px; border-bottom: 1px solid var(--line);
+           background: linear-gradient(180deg, #1c160e, var(--bg)); }
+  header img { width: 44px; height: 44px; }
+  header h1 { margin: 0; font-size: 1.35em; letter-spacing: .02em; }
+  header .sub { color: var(--muted); font-size: .9em; }
+  header .right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+  main { max-width: 1180px; margin: 0 auto; padding: 20px 24px 40px; display: grid; gap: 18px;
+         grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
+  .card h2 { margin: 0 0 12px; font-size: 1em; text-transform: uppercase; letter-spacing: .08em; color: var(--amber); }
+  .wide { grid-column: 1 / -1; }
+  button { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 6px;
+           padding: 7px 14px; font: inherit; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--amber2); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: linear-gradient(180deg, var(--amber), var(--amber2)); color: #1b1408; border: none; font-weight: 600; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 99px; font-size: .82em; border: 1px solid var(--line); color: var(--muted); }
+  .pill.ok { color: var(--ok); border-color: #2f5a2f; } .pill.new { color: var(--amber); border-color: var(--amber2); }
+  .pill.off { color: var(--dim); }
+  .notice { background: #3a1d17; border: 1px solid #6b2d23; color: #ffd2c9; border-radius: 8px; padding: 10px 14px; }
+  .muted { color: var(--muted); } .small { font-size: .86em; }
+
+  /* Receiver */
+  .freqrow { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .freq { font: 600 3.2em/1 var(--mono); color: var(--amber); letter-spacing: .02em; }
+  .unit { color: var(--muted); font-size: 1.1em; }
+  .tags { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 4px; }
+  .tag { background: var(--panel2); border: 1px solid var(--line); border-radius: 5px; padding: 1px 8px; font-size: .85em; color: var(--muted); }
+  .tag.on { color: #1b1408; background: var(--amber); border-color: var(--amber); }
+  .meters { display: grid; grid-template-columns: auto 1fr auto; gap: 6px 10px; align-items: center; margin: 12px 0; }
+  .bar { height: 10px; background: #0f0c07; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: linear-gradient(90deg, #3f8f3f, #b6e06a 60%, #f6cf74); transition: width .25s; }
+  .rds { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin-top: 8px; }
+  .ps { font: 600 1.9em/1.1 var(--mono); letter-spacing: .12em; }
+  .rt { grid-column: 1 / -1; color: var(--muted); min-height: 1.4em; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .afs { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+  .afs span { font: .82em var(--mono); background: var(--panel2); border-radius: 4px; padding: 1px 6px; color: var(--muted); }
+  .controls { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 14px; }
+  .ctl { display: flex; align-items: center; justify-content: space-between; background: var(--panel2); border: 1px solid var(--line);
+         border-radius: 6px; padding: 4px 6px 4px 10px; }
+  .ctl span { color: var(--muted); font-size: .88em; }
+  .ctl button { padding: 3px 10px; }
+  .tune { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .tune input { background: #0f0c07; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font: 1em var(--mono); width: 10em; }
+
+  /* Screen */
+  .screen { background: #000; border: 1px solid var(--line); border-radius: 8px; padding: 10px; text-align: center; }
+  .screen img { width: 100%; max-width: 640px; image-rendering: pixelated; aspect-ratio: 320 / 170; background: #000; display: block; margin: auto; }
+  .screenbar { display: flex; gap: 10px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+  .battery { display: inline-flex; align-items: center; gap: 6px; }
+  .battery b { display: inline-block; width: 28px; height: 13px; border: 2px solid var(--muted); border-radius: 3px; position: relative; }
+  .battery b::after { content: ""; position: absolute; right: -5px; top: 2px; width: 3px; height: 5px; background: var(--muted); border-radius: 1px; }
+  .battery b i { position: absolute; left: 1px; top: 1px; bottom: 1px; background: var(--ok); border-radius: 1px; }
+
+  /* Updater */
+  .versions { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin-bottom: 12px; }
+  .versions b { font-family: var(--mono); }
+  .options { display: grid; gap: 8px; margin: 12px 0; }
+  .options label { display: flex; gap: 10px; align-items: flex-start; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; cursor: pointer; }
+  .options label:has(input:checked) { border-color: var(--amber2); }
+  .options small { display: block; color: var(--muted); }
+  select { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: inherit; }
+  progress { width: 100%; height: 14px; accent-color: var(--amber2); }
+  .log { background: #0c0a06; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; height: 150px; overflow: auto;
+         font: .8em/1.4 var(--mono); color: #cfc3aa; white-space: pre-wrap; margin-top: 10px; }
+  .notes { max-height: 210px; overflow: auto; background: var(--panel2); border-radius: 8px; padding: 6px 14px; margin-top: 10px; font-size: .9em; }
+  .notes h3 { font-size: 1em; color: var(--amber); margin: 10px 0 4px; } .notes ul { padding-left: 1.2em; margin: 4px 0; }
+  footer { text-align: center; color: var(--dim); padding: 10px 0 30px; font-size: .88em; }
+</style>
+</head>
+<body>
+<header>
+  <img src="../_static/unleashedats-logo.svg" alt="">
+  <div>
+    <h1>UnleashedATS Web Updater</h1>
+    <div class="sub">Update, watch and control your ATS-Mini from the browser, over USB</div>
+  </div>
+  <div class="right">
+    <span id="linkState" class="pill off">Not connected</span>
+    <button id="connect" class="primary">Connect receiver</button>
+  </div>
+</header>
+
+<main>
+  <div id="unsupported" class="notice wide" hidden>
+    This page needs <b>Web Serial</b>, available in Chrome and Edge on a computer. Firefox and Safari do not have it.
+  </div>
+
+  <!-- Live receiver -->
+  <section class="card">
+    <h2>Receiver</h2>
+    <div id="rxIdle" class="muted">Connect the receiver with its USB cable and press <b>Connect receiver</b>. The firmware must have <i>Settings → USB Mode</i> on ad hoc, its default.</div>
+    <div id="rxLive" hidden>
+      <div class="freqrow"><span id="freq" class="freq">--.--</span><span id="unit" class="unit">MHz</span>
+        <span class="muted" id="bandMode"></span></div>
+      <div class="tags" id="tags"></div>
+      <div class="meters">
+        <span class="muted small">RSSI</span><div class="bar"><i id="rssiBar" style="width:0"></i></div><span id="rssi" class="small">-</span>
+        <span class="muted small">SNR</span><div class="bar"><i id="snrBar" style="width:0"></i></div><span id="snr" class="small">-</span>
+      </div>
+      <div class="rds">
+        <div class="ps" id="ps">&nbsp;</div>
+        <div class="muted small" style="text-align:right" id="pi"></div>
+        <div class="rt" id="rt"></div>
+      </div>
+      <div class="afs" id="afs"></div>
+      <div class="controls">
+        <div class="ctl"><span>Tune</span><span><button data-cmd="r">◀</button> <button data-cmd="R">▶</button></span></div>
+        <div class="ctl"><span>Seek</span><span><button data-cmd="g">◀</button> <button data-cmd="G">▶</button></span></div>
+        <div class="ctl"><span>Volume</span><span><button data-cmd="v">−</button> <button data-cmd="V">+</button></span></div>
+        <div class="ctl"><span>Band</span><span><button data-cmd="b">◀</button> <button data-cmd="B">▶</button></span></div>
+        <div class="ctl"><span>Mode</span><span><button data-cmd="m">◀</button> <button data-cmd="M">▶</button></span></div>
+        <div class="ctl"><span>Step</span><span><button data-cmd="s">◀</button> <button data-cmd="S">▶</button></span></div>
+        <div class="ctl"><span>Bandwidth</span><span><button data-cmd="w">◀</button> <button data-cmd="W">▶</button></span></div>
+        <div class="ctl"><span>AGC/ATT</span><span><button data-cmd="a">◀</button> <button data-cmd="A">▶</button></span></div>
+        <div class="ctl"><span>Brightness</span><span><button data-cmd="l">−</button> <button data-cmd="L">+</button></span></div>
+      </div>
+      <div class="tune">
+        <input id="freqInput" placeholder="98.3 or 9650" inputmode="decimal">
+        <button id="tuneBtn">Tune</button>
+        <button data-cmd="X">DX Mode</button>
+        <button data-cmd="Z">Mono</button>
+        <button data-cmd="e">Click</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Screen mirror -->
+  <section class="card">
+    <h2>Screen</h2>
+    <div class="screen"><img id="screen" alt="Receiver screen"></div>
+    <div class="screenbar">
+      <button id="shot" disabled>Capture</button>
+      <label class="small"><input type="checkbox" id="autoShot"> Keep it live</label>
+      <a id="saveShot" class="small" download="ats-mini.bmp" hidden>Save picture</a>
+      <span style="margin-left:auto" class="battery small" id="battery" hidden><b><i id="battFill"></i></b><span id="battText"></span></span>
+    </div>
+    <p class="muted small" id="fwLine"></p>
+  </section>
+
+  <!-- Updater -->
+  <section class="card wide">
+    <h2>Firmware update</h2>
+    <div style="display:grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 22px" id="updGrid">
+      <div>
+        <div class="versions">
+          <span class="muted">Latest release</span><span><b id="latest">…</b> <span id="latestDate" class="muted small"></span></span>
+          <span class="muted">On the receiver</span><span><b id="installed">connect to see</b> <span id="updState"></span></span>
+        </div>
+        <label class="muted small">Receiver
+          <select id="variant">
+            <option value="auto">ATS-Mini, detect the PSRAM type</option>
+            <option value="ospi">ATS-Mini OSPI (ESP32-S3R8, 8 MB PSRAM)</option>
+            <option value="qspi">ATS-Mini QSPI (ESP32-S3R2, 2 MB PSRAM)</option>
+            <option value="lilygo-t-embed">LilyGO T-Embed SI4732</option>
+          </select>
+        </label>
+        <div class="options">
+          <label><input type="radio" name="mode" value="keep" checked>
+            <span><b>Update</b><small>Firmware, recovery app, bootloader and partition table. Settings and memories stay.</small></span></label>
+          <label><input type="radio" name="mode" value="clean">
+            <span><b>Clean install</b><small>Erases the whole flash first, as on a new receiver.</small></span></label>
+          <label><input type="radio" name="mode" value="file">
+            <span><b>From a file</b><small>A firmware <code>.bin</code> from this computer: <code>-ota.bin</code> or <code>ats-mini.ino.bin</code> goes to the firmware slot, <code>merged.bin</code> to the whole flash.</small>
+            <input type="file" id="file" accept=".bin" style="margin-top:6px"></span></label>
+        </div>
+        <button id="flash" class="primary">Install</button>
+        <span class="muted small" id="flashHint">The receiver restarts into its download mode by itself, no button needed.</span>
+        <div style="margin-top:12px"><progress id="progress" max="100" value="0"></progress>
+          <div class="small" id="progressText">&nbsp;</div></div>
+      </div>
+      <div>
+        <div class="muted small">What's new in the latest release</div>
+        <div class="notes" id="notes">…</div>
+        <div class="log" id="log"></div>
+      </div>
+    </div>
+  </section>
+</main>
+<footer>
+  <a href="../manual.html">User manual</a> · <a href="../flash.html">Flashing instructions</a> ·
+  <a href="https://github.com/Danucosukosuko/UnleashedATS">GitHub</a> · Flashing by
+  <a href="https://github.com/espressif/esptool-js">esptool-js</a>
+</footer>
+
+<script type="module">
+const REPO = 'Danucosukosuko/UnleashedATS';
+const ESPTOOL = 'https://cdn.jsdelivr.net/npm/esptool-js@0.7.1/+esm';
+const VID = 0x303a;
+const DEMO = new URLSearchParams(location.search).get('demo');
+const $ = (id) => document.getElementById(id);
+const enc = new TextEncoder(), dec = new TextDecoder();
+
+let port = null, reader = null, writer = null, monitorOn = false;
+let text = '', capture = null, status = null, latest = null, shooting = false, autoTimer = null;
+
+// ---------- small helpers ----------
+function log(line) { const l = $('log'); l.textContent += line + '\n'; l.scrollTop = l.scrollHeight; }
+function linkState(label, cls) { $('linkState').textContent = label; $('linkState').className = 'pill ' + cls; }
+function parseVersion(s) {
+  const m = /v?(\d+)\.(\d+)-(\d+)\.(\d+)(?:-beta(\d+))?/.exec(s || '');
+  return m ? { tag: 'v' + m[1] + '.' + m[2].padStart(2, '0') + '-' + m[3] + '.' + m[4].padStart(2, '0') + (m[5] ? '-beta' + m[5] : ''),
+               rank: (+m[1] * 100 + +m[2]) * 100 + (m[5] ? +m[5] : 99) } : null;
+}
+function escapeHtml(s) { return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function markdown(md) {
+  // Enough Markdown for release notes: headings, lists, emphasis, code, links
+  let html = '', list = false;
+  for (const raw of md.split(/\r?\n/)) {
+    let line = escapeHtml(raw)
+      .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\*(.+?)\*/g, '<i>$1</i>')
+      .replace(/`(.+?)`/g, '<code>$1</code>').replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2">$1</a>');
+    const item = /^\s*[-*] (.*)/.exec(line);
+    if (item) { if (!list) { html += '<ul>'; list = true; } html += '<li>' + item[1] + '</li>'; continue; }
+    if (list) { html += '</ul>'; list = false; }
+    const h = /^#{1,6}\s*(.*)/.exec(line);
+    if (h) html += '<h3>' + h[1] + '</h3>'; else if (line.trim()) html += '<p>' + line + '</p>';
+  }
+  return html + (list ? '</ul>' : '');
+}
+
+// ---------- latest release ----------
+async function loadLatest() {
+  if (DEMO) {
+    latest = { tag_name: 'v1.02-2.46', published_at: '2026-11-28T09:30:00Z',
+      body: '## 1.02-2.46 (2026-11-28)\n\n### Added\n\n- **Recovery app** in a flash partition of its own: hold the encoder for two seconds at power on.\n- **Safe mode** with options to erase each kind of data on its own.\n- *Settings → Update FW → Previous FW* starts the firmware kept from before the last update.\n- Release notes before updating, and a beta update channel.\n- Web theme editor at `/themes`.' };
+  } else {
+    try {
+      const r = await fetch('https://api.github.com/repos/' + REPO + '/releases/latest');
+      latest = await r.json();
+    } catch (e) { $('latest').textContent = 'unavailable'; return; }
+  }
+  $('latest').textContent = latest.tag_name;
+  $('latestDate').textContent = new Date(latest.published_at).toLocaleDateString();
+  $('notes').innerHTML = markdown(latest.body || 'No notes.');
+  compareVersions();
+}
+
+function compareVersions() {
+  const have = parseVersion(status && status.fw), want = parseVersion(latest && latest.tag_name);
+  if (!have) return;
+  $('installed').textContent = have.tag;
+  if (want && want.rank > have.rank) $('updState').innerHTML = '<span class="pill new">Update available</span>';
+  else if (want) $('updState').innerHTML = '<span class="pill ok">Up to date</span>';
+}
+
+// ---------- receiver over Web Serial ----------
+async function send(cmd) {
+  if (DEMO) { log('> ' + cmd); return; }
+  if (writer) await writer.write(enc.encode(cmd));
+}
+
+async function connect() {
+  if (port) return disconnect();
+  try {
+    port = await navigator.serial.requestPort({ filters: [{ usbVendorId: VID }] });
+    await port.open({ baudRate: 115200 });
+    // Keep the reset lines quiet, so that opening the port does not restart the receiver
+    try { await port.setSignals({ dataTerminalReady: false, requestToSend: false }); } catch (e) {}
+  } catch (e) { port = null; log('Connection canceled: ' + e.message); return; }
+  writer = port.writable.getWriter();
+  readLoop();
+  linkState('Connected', 'ok');
+  $('connect').textContent = 'Disconnect';
+  $('shot').disabled = false;
+  // The ad hoc J command switches the JSON status monitor on and off
+  await send('J'); monitorOn = true;
+  setTimeout(() => { if (!status) { $('rxIdle').innerHTML = 'No answer from the firmware. It may be off, in the recovery app, or with USB Mode not set to ad hoc. You can still install a firmware below.'; } }, 3500);
+}
+
+async function disconnect() {
+  try { if (monitorOn) await send('J'); } catch (e) {}
+  monitorOn = false;
+  try { if (reader) await reader.cancel(); } catch (e) {}
+  try { if (writer) { writer.releaseLock(); writer = null; } } catch (e) {}
+  for (let i = 0; i < 50 && reader; i++) await new Promise((r) => setTimeout(r, 20));
+  try { await port.close(); } catch (e) {}
+  port = null; status = null;
+  linkState('Not connected', 'off');
+  $('connect').textContent = 'Connect receiver';
+  $('shot').disabled = true;
+  $('rxLive').hidden = true; $('rxIdle').hidden = false;
+}
+
+async function readLoop() {
+  reader = port.readable.getReader();
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (value) receive(value);
+    }
+  } catch (e) { log('Serial: ' + e.message); }
+  finally { try { reader.releaseLock(); } catch (e) {} reader = null; }
+}
+
+function receive(bytes) {
+  if (capture) return captureBytes(bytes);
+  text += dec.decode(bytes, { stream: true });
+  let nl;
+  while ((nl = text.indexOf('\n')) >= 0) {
+    const line = text.slice(0, nl).trim();
+    text = text.slice(nl + 1);
+    if (line.startsWith('{')) { try { showStatus(JSON.parse(line)); } catch (e) {} }
+    else if (line) log(line);
+  }
+  if (text.length > 20000) text = '';
+}
+
+// ---------- status ----------
+function showStatus(s) {
+  status = s;
+  $('rxIdle').hidden = true; $('rxLive').hidden = false;
+  const fm = s.mode === 'FM';
+  $('freq').textContent = fm ? (s.freq / 1e6).toFixed(2) : (s.freq / 1e3).toFixed(s.freq % 1000 ? 1 : 0);
+  $('unit').textContent = fm ? 'MHz' : 'kHz';
+  $('bandMode').textContent = [s.band, s.mode, s.step, s.bw].filter(Boolean).join(' · ');
+  const tags = [['Stereo', s.stereo], ['Mono', s.mono], ['DX', s.dx], ['TP', s.tp], ['TA', s.ta],
+                ['AF', s.af && s.af.length], ['EON', s.eon && s.eon.length],
+                // AGC index: 0 automatic gain, 1 off, then attenuation steps
+                [s.agc === 0 ? 'AGC' : s.agc === 1 ? 'AGC off' : 'ATT ' + (s.agc - 1), s.agc === 0]];
+  $('tags').innerHTML = tags.map(([n, on]) => '<span class="tag' + (on ? ' on' : '') + '">' + n + '</span>').join('');
+  $('rssi').textContent = s.rssi + ' dBµV'; $('rssiBar').style.width = Math.min(100, s.rssi * 100 / 70) + '%';
+  $('snr').textContent = s.snr + ' dB'; $('snrBar').style.width = Math.min(100, s.snr * 100 / 30) + '%';
+  $('ps').textContent = s.ps || s.name || ' ';
+  $('pi').textContent = [s.pi && 'PI ' + s.pi, s.pty].filter(Boolean).join(' · ');
+  $('rt').textContent = s.rt || s.listed || '';
+  const afs = (s.af || []).map((f) => '<span>AF ' + (f / 1e6).toFixed(1) + '</span>')
+    .concat((s.eon || []).map((n) => '<span>EON ' + escapeHtml(n.ps || n.pi) + '</span>'));
+  $('afs').innerHTML = afs.join('');
+  $('battery').hidden = false;
+  const pct = s.batt_pct;
+  $('battFill').style.width = (pct < 0 ? 100 : Math.max(4, pct)) * 0.22 + 'px';
+  $('battFill').style.background = pct >= 0 && pct <= 15 ? 'var(--warn)' : 'var(--ok)';
+  $('battText').textContent = (pct < 0 ? 'Charging, ' : pct + '%, ') + s.batt_v + ' V';
+  $('fwLine').textContent = s.fw || '';
+  compareVersions();
+}
+
+// ---------- screen capture ----------
+function captureBytes(bytes) {
+  const c = capture;
+  c.parts.push(bytes); c.length += bytes.length;
+  if (!c.size) {
+    // Find the start of the BMP, skipping any text before it
+    const all = concat(c.parts, c.length);
+    for (let i = 0; i + 6 <= all.length; i++)
+      if (all[i] === 0x42 && all[i + 1] === 0x4d) {
+        const size = all[i + 2] | all[i + 3] << 8 | all[i + 4] << 16 | all[i + 5] << 24;
+        if (size > 1000 && size < 400000) { c.size = size; c.parts = [all.slice(i)]; c.length = all.length - i; break; }
+      }
+  }
+  if (c.size && c.length >= c.size) { capture = null; c.resolve(concat(c.parts, c.length).slice(0, c.size)); }
+}
+function concat(parts, length) { const out = new Uint8Array(length); let o = 0; for (const p of parts) { out.set(p, o); o += p.length; } return out; }
+
+async function shoot() {
+  if (shooting || (!port && !DEMO)) return;
+  shooting = true;
+  try {
+    if (DEMO) { $('screen').src = '../_static/screenshot-main.png'; return; }
+    const wasOn = monitorOn;
+    if (wasOn) { await send('J'); monitorOn = false; await new Promise((r) => setTimeout(r, 200)); }
+    const bmp = await new Promise((resolve, reject) => {
+      capture = { parts: [], length: 0, size: 0, resolve };
+      setTimeout(() => { if (capture) { capture = null; reject(new Error('no picture')); } }, 4000);
+      send('c');
+    });
+    const url = URL.createObjectURL(new Blob([bmp], { type: 'image/bmp' }));
+    $('screen').src = url; $('saveShot').href = url; $('saveShot').hidden = false;
+    if (wasOn) { await send('J'); monitorOn = true; }
+  } catch (e) { log('Screen capture failed: ' + e.message); if (!monitorOn && port) { await send('J'); monitorOn = true; } }
+  finally { shooting = false; }
+}
+
+// ---------- flashing ----------
+function partitionOffsets(table) {
+  // ESP-IDF partition table entries: 0xAA50, type, subtype, offset, size, label
+  const found = {};
+  const view = new DataView(table.buffer, table.byteOffset, table.byteLength);
+  for (let i = 0; i + 32 <= table.length; i += 32) {
+    if (view.getUint16(i, true) !== 0x50aa) break;
+    const type = table[i + 2], sub = table[i + 3], offset = view.getUint32(i + 4, true);
+    const label = dec.decode(table.slice(i + 12, i + 28)).replace(/\0.*$/, '');
+    if (type === 0 && sub === 0x10) found.app0 = offset;
+    if (type === 0 && sub === 0x20) found.recovery = offset;
+    found[label] = offset;
+  }
+  return found;
+}
+
+async function fetchBin(variant, name) {
+  const r = await fetch('firmware/' + variant + '/' + name, { cache: 'no-store' });
+  if (!r.ok) throw new Error(name + ' is not available for ' + variant);
+  return new Uint8Array(await r.arrayBuffer());
+}
+
+function progress(pct, label) { $('progress').value = pct; $('progressText').textContent = label; }
+
+async function flash() {
+  const mode = document.querySelector('input[name=mode]:checked').value;
+  const file = $('file').files[0];
+  if (mode === 'file' && !file) { progress(0, 'Choose a file first.'); return; }
+  if (DEMO) { progress(64, 'Writing the firmware: 1.21 of 1.85 MB'); return; }
+  if (!('serial' in navigator)) return;
+
+  $('flash').disabled = true;
+  let transport = null;
+  try {
+    if (!port) port = await navigator.serial.requestPort({ filters: [{ usbVendorId: VID }] });
+    else await disconnectKeepPort();
+    progress(2, 'Loading the flasher...');
+    const { ESPLoader, Transport } = await import(ESPTOOL);
+    transport = new Transport(port, false);
+    const terminal = { clean() {}, writeLine: (l) => log(l), write: (t) => { if (t.trim()) log(t.trimEnd()); } };
+    const loader = new ESPLoader({ transport, baudrate: 921600, terminal });
+    progress(5, 'Restarting the receiver into its download mode...');
+    const chip = await loader.main();
+    if (!/ESP32-S3/.test(chip)) throw new Error('This is not an ESP32-S3 receiver: ' + chip);
+    const features = await loader.chip.getChipFeatures(loader);
+    log('Chip: ' + chip + ', ' + features.join(', '));
+
+    // Variant: the embedded PSRAM tells OSPI (8 MB) from QSPI (2 MB)
+    let variant = $('variant').value;
+    if (variant === 'auto') {
+      const f = features.join(' ');
+      variant = /PSRAM 8MB/.test(f) ? 'ospi' : /PSRAM 2MB/.test(f) ? 'qspi' : null;
+      if (!variant) throw new Error('Unable to tell the PSRAM type, choose the receiver in the list.');
+      log('Variant: ' + variant);
+    }
+
+    let files = [];
+    if (mode === 'file') {
+      const data = new Uint8Array(await file.arrayBuffer());
+      if (/merged/i.test(file.name)) files = [{ data, address: 0 }];
+      else files = [{ data: await fetchBin(variant, 'boot_app0.bin'), address: 0xe000 }, { data, address: 0x10000 }];
+    } else {
+      progress(8, 'Downloading ' + (latest ? latest.tag_name : 'the latest release') + ' for ' + variant + '...');
+      const parts = await fetchBin(variant, 'ats-mini.ino.partitions.bin');
+      const at = partitionOffsets(parts);
+      files = [
+        { data: await fetchBin(variant, 'ats-mini.ino.bootloader.bin'), address: 0 },
+        { data: parts, address: 0x8000 },
+        { data: await fetchBin(variant, 'boot_app0.bin'), address: 0xe000 },
+        { data: await fetchBin(variant, 'ats-mini.ino.bin'), address: at.app0 || 0x10000 },
+      ];
+      if (at.recovery) {
+        try { files.push({ data: await fetchBin(variant, 'recovery.bin'), address: at.recovery }); }
+        catch (e) { log('No recovery app in this release'); }
+      }
+    }
+
+    const total = files.reduce((n, f) => n + f.data.length, 0);
+    const done = files.map(() => 0);
+    await loader.writeFlash({
+      fileArray: files, flashMode: 'keep', flashFreq: 'keep', flashSize: 'keep',
+      eraseAll: mode === 'clean', compress: true,
+      reportProgress: (i, written, size) => {
+        done[i] = written * files[i].data.length / size;
+        const sum = done.reduce((a, b) => a + b, 0);
+        progress(10 + 88 * sum / total, 'Writing: ' + (sum / 1048576).toFixed(2) + ' of ' + (total / 1048576).toFixed(2) + ' MB');
+      },
+    });
+    progress(100, 'Done. The receiver restarts with the new firmware.');
+    await loader.after('hard_reset');
+  } catch (e) {
+    log('Error: ' + e.message);
+    progress(0, 'Failed: ' + e.message);
+  } finally {
+    try { if (transport) await transport.disconnect(); } catch (e) {}
+    port = null;
+    linkState('Not connected', 'off');
+    $('connect').textContent = 'Connect receiver';
+    $('flash').disabled = false;
+  }
+}
+
+async function disconnectKeepPort() {
+  // Hand the port from the status monitor to the flasher
+  const keep = port;
+  await disconnect();
+  port = keep;
+}
+
+// ---------- wiring ----------
+if (!('serial' in navigator) && !DEMO) { $('unsupported').hidden = false; $('connect').disabled = true; }
+$('connect').onclick = connect;
+$('shot').onclick = shoot;
+$('autoShot').onchange = () => { clearInterval(autoTimer); if ($('autoShot').checked) autoTimer = setInterval(shoot, 2500); };
+$('flash').onclick = flash;
+document.querySelectorAll('[data-cmd]').forEach((b) => b.onclick = () => send(b.dataset.cmd));
+$('tuneBtn').onclick = () => {
+  const v = parseFloat($('freqInput').value.replace(',', '.'));
+  if (!v) return;
+  // MHz below 200, kHz above
+  send('F' + Math.round(v < 200 ? v * 1e6 : v * 1e3) + '\n');
+};
+loadLatest();
+
+if (DEMO) {
+  linkState('Connected (demo)', 'ok'); $('connect').textContent = 'Disconnect'; $('shot').disabled = false;
+  showStatus({ fw: 'UnleashedATS F/W: v1.01-2.46 Nov 28 2026', freq: 98300000, band: 'VHF', mode: 'FM', step: '100k', bw: 'Auto',
+    agc: 0, vol: 35, rssi: 47, snr: 24, stereo: true, dx: false, mono: false, tp: true, ta: false,
+    batt_v: '3.94', batt_pct: 72, ps: 'RNE 3', pi: 'E213', pty: 'Varied', rt: 'Radio 3 - Hoy empieza todo, con Ángel Carmona',
+    af: [89900000, 93200000, 95400000, 97700000], eon: [{ pi: 'E211', ps: 'RNE 1' }, { pi: 'E212', ps: 'RNE CLAS' }] });
+  shoot();
+  if (DEMO === 'flash') { document.querySelector('input[value=keep]').checked = true; progress(64, 'Writing: 1.92 of 3.00 MB');
+    log('Chip: ESP32-S3 (QFN56) (revision v0.2), Wi-Fi, BLE, Embedded PSRAM 8MB (AP_3v3)');
+    log('Variant: ospi'); log('Compressed 1935200 bytes to 1264218...'); log('Writing at 0x00010000... (34%)'); log('Writing at 0x000f0000... (64%)'); }
+}
+</script>
+</body>
+</html>
