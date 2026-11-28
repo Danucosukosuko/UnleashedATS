@@ -8,10 +8,10 @@
 
 static const char *const welcomeNews[] =
 {
-  "Recovery app and safe mode",
-  "Previous FW and beta channel",
-  "Release notes before updating",
-  "Web theme editor at /themes",
+  "RT+: artist and song on screen",
+  "PTY Search by programme type",
+  "Backups in the web updater",
+  "DX Watch log, FMLIST export",
 };
 
 static void drawCentered(const char *text, int y, const lgfx::IFont *font, uint16_t color)

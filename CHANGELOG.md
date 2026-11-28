@@ -4,6 +4,21 @@ UnleashedATS releases are named `v<CFW version>-<ATS-Mini version>`. The user ma
 
 <!-- towncrier release notes start -->
 
+## 1.03-2.46 (beta)
+
+### Added
+
+- **RT+ (RadioText Plus)**: when a station tags its RadioText, the RadioText line shows the artist and title of what is playing. The web remote, the web updater and the `J` JSON status show them too (`artist`, `title`).
+- **PTY Search** in the menu: pick a programme type, such as News, Rock Music or Sport, and go to the next FM station that broadcasts it.
+- **Backups**: the web updater saves the settings, band states, memories, custom themes and station list choices to a file on your computer, optionally with the Wi-Fi networks, and restores them. It saves one before installing a firmware. USB commands `K`, `k` and `&`.
+- **DX Watch log** on the receiver: *DX Watch → Log* lists the catches, newest first; click one to tune it, or clear the log.
+- The web updater reads the DX Watch log over USB and saves it as CSV, or in the URDS format FMLIST uses for RDS logs. USB command `D`.
+
+### Changed
+
+- DX Watch logs the UTC date and time of each catch. Logs from earlier versions are converted.
+- The manual QR code points to the documentation at its new address, `/docs/`.
+
 ## 1.02-2.46 (2026-11-28)
 
 The recovery app and the new flash layout come with a USB flash of the full firmware, see the [flashing instructions](https://danucosukosuko.github.io/UnleashedATS/docs/flash.html). Updating over Wi-Fi brings everything else and keeps the earlier layout, without the recovery app.
