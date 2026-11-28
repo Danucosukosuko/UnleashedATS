@@ -9,6 +9,12 @@
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-59c36a?style=for-the-badge&labelColor=1c1710"></a>
 </p>
 
+<p align="center">
+  <a href="https://danucosukosuko.github.io/UnleashedATS/"><b>Website</b></a> ·
+  <a href="https://danucosukosuko.github.io/UnleashedATS/update/"><b>Install from the browser</b></a> ·
+  <a href="https://danucosukosuko.github.io/UnleashedATS/docs/"><b>Documentation</b></a>
+</p>
+
 **UnleashedATS** is a custom firmware (CFW) for the ATS-Mini pocket receiver (ESP32-S3 + SI4732). It keeps
 everything the [official ATS-Mini firmware](https://github.com/esp32-si4732/ats-mini) does and adds the tools
 a DXer misses on the go: RDS alternative frequencies and other networks you can browse and tune, FM station
@@ -37,7 +43,7 @@ FM-DX style remote control page.
 | 🖥️ | **FM-DX style remote.** A web page at `/remote` with signal history, PS/PI/PTY/RT, AF and EON lists, presets and an RDS logger. | `http://atsmini.local/remote` |
 | 🔌 | **Everything over USB.** A JSON monitor with the full receiver state, plus seek, DX and mono commands, for the PC companion. | USB ad hoc protocol |
 | 🔄 | **Updates from this repository.** *Settings → Update FW* shows the notes of a new release before installing it, offers a **beta channel**, and goes back to the **previous firmware** with two clicks. | Settings → Update FW |
-| 🧰 | **Web updater.** Update from the browser over USB, with the variant detected and the settings kept, and watch and control the receiver live, screen included. | [Web updater](https://danucosukosuko.github.io/UnleashedATS/updater/) |
+| 🧰 | **Web updater.** Update from the browser over USB, with the variant detected and the settings kept, and watch and control the receiver live, screen included. | [Web updater](https://danucosukosuko.github.io/UnleashedATS/update/) |
 | 🛟 | **Recovery app.** A recovery app in a partition of its own, out of reach of updates: hold the encoder at power on to start either firmware slot, install a firmware from the browser or GitHub, erase data part by part or go to USB flashing, from the receiver or its own web page. It starts by itself when the firmware is broken, and an update that does not start is rolled back. | Power on |
 | 🎨 | **Theme editor.** Make your own color themes in the browser with a live preview on the receiver, and hide the built-in ones you do not use. | `http://atsmini.local/themes` |
 | 👋 | **Welcome screen** the first time the firmware runs and after each update. | Boot |

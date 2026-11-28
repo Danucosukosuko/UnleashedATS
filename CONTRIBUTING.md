@@ -24,4 +24,4 @@ Station corrections and additions go in `tools/stations/manual/<CC>.json`, see [
 
 ## Development
 
-Read [the development guide](https://danucosukosuko.github.io/UnleashedATS/development.html) for the build setup. After editing `ats-mini/web/remote.html`, run `python tools/embed_web.py`.
+Read [the development guide](https://danucosukosuko.github.io/UnleashedATS/docs/development.html) for the build setup. After editing `ats-mini/web/remote.html`, run `python tools/embed_web.py`.

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>UnleashedATS Web Updater</title>
-<link rel="icon" href="../_static/unleashedats-logo.svg">
+<link rel="icon" href="../assets/unleashedats-logo.svg">
 <style>
   :root {
     --bg: #14100a; --panel: #1f1912; --panel2: #2a2218; --line: #3a3020;
@@ -88,7 +88,7 @@
 </head>
 <body>
 <header>
-  <img src="../_static/unleashedats-logo.svg" alt="">
+  <img src="../assets/unleashedats-logo.svg" alt="">
   <div>
     <h1>UnleashedATS Web Updater</h1>
     <div class="sub">Update, watch and control your ATS-Mini from the browser, over USB</div>
@@ -196,7 +196,7 @@
   </section>
 </main>
 <footer>
-  <a href="../manual.html">User manual</a> · <a href="../flash.html">Flashing instructions</a> ·
+  <a href="../">UnleashedATS</a> · <a href="../docs/manual.html">User manual</a> · <a href="../docs/flash.html">Flashing instructions</a> ·
   <a href="https://github.com/Danucosukosuko/UnleashedATS">GitHub</a> · Flashing by
   <a href="https://github.com/espressif/esptool-js">esptool-js</a>
 </footer>
@@ -376,7 +376,7 @@ async function shoot() {
   if (shooting || (!port && !DEMO)) return;
   shooting = true;
   try {
-    if (DEMO) { $('screen').src = '../_static/screenshot-main.png'; return; }
+    if (DEMO) { $('screen').src = '../assets/screen-main.png'; return; }
     const wasOn = monitorOn;
     if (wasOn) { await send('J'); monitorOn = false; await new Promise((r) => setTimeout(r, 200)); }
     const bmp = await new Promise((resolve, reject) => {

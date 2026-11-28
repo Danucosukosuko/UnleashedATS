@@ -1,1 +1,0 @@
-Add a Capacitor toggle to the receiver's Settings menu, sharing the automatic antenna capacitor setting with the Wi-Fi Config page ([discussion #409](https://github.com/esp32-si4732/ats-mini/discussions/409)).

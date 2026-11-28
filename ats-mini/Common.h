@@ -24,7 +24,7 @@ static constexpr const lgfx::IFont* FONT_DIGITS  = &lgfx::fonts::Font7;  // 48px
 #define RECEIVER_NAME  "ATS-Mini"
 #define FIRMWARE_URL   "https://github.com/Danucosukosuko/UnleashedATS"
 #define FIRMWARE_API  "https://api.github.com/repos/Danucosukosuko/UnleashedATS"
-#define MANUAL_URL     "https://danucosukosuko.github.io/UnleashedATS/manual.html"
+#define MANUAL_URL     "https://danucosukosuko.github.io/UnleashedATS/docs/manual.html"
 #define STATIONS_URL   "https://raw.githubusercontent.com/Danucosukosuko/UnleashedATS/main/stations"
 #define AUTHORS_LINE1  "Authors: PU2CLR (Ricardo Caratti),"
 #define AUTHORS_LINE2  "Volos Projects, Ralph Xavier, Sunnygold,"

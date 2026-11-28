@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'docs/**'
+      - 'site/**'
       - 'changelog/**'
       - 'CHANGELOG.md'
       - 'CONTRIBUTING.md'
@@ -15,6 +16,7 @@ on:
       - main
     paths:
       - 'docs/**'
+      - 'site/**'
       - 'changelog/**'
       - 'CHANGELOG.md'
       - 'CONTRIBUTING.md'
@@ -55,6 +57,23 @@ jobs:
         run: |
           uv run sphinx-build --fail-on-warning --nitpicky docs/source docs/build
 
+      - name: Put the site together
+        # / is the UnleashedATS page, /docs/ the documentation, /update/ the web updater
+        run: |
+          set -e
+          rm -rf _site
+          mkdir -p _site
+          cp -r site/. _site/
+          cp -r docs/build/. _site/docs/
+          rm -rf _site/docs/.doctrees _site/docs/.buildinfo
+          # The documentation used to be at the top: keep the old addresses, such as
+          # the manual QR code of released firmware, working
+          for f in docs/build/*.html; do
+            n=$(basename "$f")
+            [ "$n" = index.html ] && continue
+            printf '<!DOCTYPE html><meta charset="utf-8"><title>Moved</title><meta http-equiv="refresh" content="0; url=docs/%s"><link rel="canonical" href="docs/%s"><p>Moved to <a href="docs/%s">docs/%s</a>.</p>\n' "$n" "$n" "$n" "$n" > "_site/$n"
+          done
+
       - name: Add the latest firmware for the web updater
         # Release downloads have no CORS headers, so the web updater gets the
         # files of the latest release from the site itself
@@ -62,7 +81,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          OUT=docs/build/updater/firmware
+          OUT=_site/update/firmware
           TAG=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
           echo "Latest release: $TAG"
           for V in ospi qspi lilygo-t-embed; do
@@ -76,11 +95,11 @@ jobs:
           echo "{\"tag\": \"$TAG\"}" > "$OUT/release.json"
           ls -R "$OUT"
 
-      - name: Upload the docs artifact
+      - name: Upload the site artifact
         id: artifact
         uses: actions/upload-pages-artifact@v5
         with:
-          path: docs/build
+          path: _site
 
   deploy:
     if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' }}

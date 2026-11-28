@@ -1,12 +1,12 @@
 # Changelog
 
-UnleashedATS releases are named `v<CFW version>-<ATS-Mini version>`. The user manual is available at <https://danucosukosuko.github.io/UnleashedATS/manual.html>. The firmware flashing instructions are available at <https://danucosukosuko.github.io/UnleashedATS/flash.html>
+UnleashedATS releases are named `v<CFW version>-<ATS-Mini version>`. The user manual is available at <https://danucosukosuko.github.io/UnleashedATS/docs/manual.html>. The firmware flashing instructions are available at <https://danucosukosuko.github.io/UnleashedATS/docs/flash.html>
 
 <!-- towncrier release notes start -->
 
 ## 1.02-2.46 (2026-11-28)
 
-The recovery app and the new flash layout come with a USB flash of the full firmware, see the [flashing instructions](https://danucosukosuko.github.io/UnleashedATS/flash.html). Updating over Wi-Fi brings everything else and keeps the earlier layout, without the recovery app.
+The recovery app and the new flash layout come with a USB flash of the full firmware, see the [flashing instructions](https://danucosukosuko.github.io/UnleashedATS/docs/flash.html). Updating over Wi-Fi brings everything else and keeps the earlier layout, without the recovery app.
 
 ### Added
 
@@ -62,6 +62,15 @@ First UnleashedATS release, based on ATS-Mini v2.46 and the changes merged after
 - Tuning from lists, memories in the same band and AF frequencies fades the audio instead of switching the hardware mute, which thumped the speaker at every step.
 - *Settings → Update FW* installs UnleashedATS releases from <https://github.com/Danucosukosuko/UnleashedATS>.
 - UnleashedATS is released under the MIT license, like ATS-Mini. The station lists are distributed under CC BY-SA 4.0.
+
+### Included from ATS-Mini after v2.46
+
+- Add a Capacitor toggle to the receiver's Settings menu, sharing the automatic antenna capacitor setting with the Wi-Fi Config page ([discussion #409](https://github.com/esp32-si4732/ats-mini/discussions/409)).
+- Encoder acceleration option in the Settings menu and Wi-Fi Config page, enabled by default ([#378](https://github.com/esp32-si4732/ats-mini/discussions/378)).
+- Add CAT TS-480 mode over USB, TCP, and Bluetooth to control tuning, reception mode, volume, squelch, and VFO A/B, with signal strength and automatic status reporting.
+- Add Wi-Fi and Bluetooth transmit power settings to the web interface.
+- Fix Bluetooth HID seeking sometimes stopping immediately on the same frequency.
+- Fix crashes when rapidly refreshing the web configuration pages.
 
 ## 2.46 (2026-11-18)
 
