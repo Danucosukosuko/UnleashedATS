@@ -2682,6 +2682,9 @@ static void drawUpdateFW(int x, int y, int sx)
 
   for(int i=0 ; i<ITEM_COUNT(updateFwActions) ; i++)
   {
+    // Only the rows that fit in the menu box, two above and two below
+    if(abs(i - updateFwIdx) > 2) continue;
+
     if(i == updateFwIdx)
     {
       drawZoomedMenu(i==2? "Channel" : updateFwLabel(i));
