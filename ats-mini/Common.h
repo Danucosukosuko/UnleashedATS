@@ -32,7 +32,7 @@ static constexpr const lgfx::IFont* FONT_DIGITS  = &lgfx::fonts::Font7;  // 48px
 #define AUTHORS_LINE4  "Marat Fayzullin"
 #define AUTHORS_LINE5  "UnleashedATS CFW: Danucosukosuko"
 
-#define VER_CFW        101  // UnleashedATS version (v1.01)
+#define VER_CFW        102  // UnleashedATS version (v1.02)
 #define VER_BETA         0  // Beta number of this build, 0 for a release (v1.02-2.46-beta1 is 102 and 1)
 #define VER_APP        246  // ATS-Mini version the CFW is based on
 #define VER_OTA          1  // OTA compatibility; bump when a full USB flash is required

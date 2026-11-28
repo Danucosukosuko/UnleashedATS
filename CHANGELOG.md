@@ -4,17 +4,19 @@ UnleashedATS releases are named `v<CFW version>-<ATS-Mini version>`. The user ma
 
 <!-- towncrier release notes start -->
 
-## 1.02-2.46 (unreleased)
+## 1.02-2.46 (2026-11-28)
+
+The recovery app and the new flash layout come with a USB flash of the full firmware, see the [flashing instructions](https://danucosukosuko.github.io/UnleashedATS/flash.html). Updating over Wi-Fi brings everything else and keeps the earlier layout, without the recovery app.
 
 ### Added
 
+- **Recovery app** in a flash partition of its own, which updates never touch: hold the encoder for two seconds at power on. It starts either firmware slot, installs a firmware uploaded from the browser or the latest release over Wi-Fi, erases the stored data part by part and restarts into USB flashing mode, from the receiver or from its own web page on the `ATS-Mini Recovery` Wi-Fi network. It also starts by itself when no firmware can start, or after three crashes in a row at startup. It comes with a USB flash, see the flashing instructions.
+- New flash layout and bootloader for the recovery app: two 2.375 MB firmware slots, the 1.5 MB recovery app and 1.56 MB for files. Settings and memories survive the change; station lists and logs are erased once.
 - **Safe mode**: holding the encoder at power on opens a recovery menu instead of erasing everything. It resets the settings, the memories, the Wi-Fi networks or the files one by one, keeps the factory reset, starts the previous firmware, turns Wi-Fi on to install a firmware from the browser, reinstalls the latest release, and restarts into USB flashing mode without the BOOT button.
 - *Settings → Update FW → Previous FW* starts the firmware kept from before the last update.
 - A new firmware stays on probation until it has started: if it does not reach the main screen, the next reset brings the previous one back.
 - *Settings → Update FW → Update* shows the notes of a newer release, to read before installing it. The web **Update** page shows them too.
 - Update channel, on the receiver and on the web: releases only, or betas as well.
-- **Recovery app** in a flash partition of its own, which updates never touch: hold the encoder for two seconds at power on. It starts either firmware slot, installs a firmware uploaded from the browser or the latest release over Wi-Fi, erases the stored data part by part and restarts into USB flashing mode, from the receiver or from its own web page on the `ATS-Mini Recovery` Wi-Fi network. It also starts by itself when no firmware can start, or after three crashes in a row at startup. It comes with a USB flash, see the flashing instructions.
-- New flash layout and bootloader for the recovery app: two 2.375 MB firmware slots, the 1.5 MB recovery app and 1.56 MB for files. Settings and memories survive the change; station lists and logs are erased once.
 - *Settings → Update FW → Recovery* restarts into the recovery app.
 - Animated update screen while checking for updates, downloading, installing and checking a firmware, with a progress bar and the result.
 - USB flashing mode keeps a screen saying so while it waits for esptool.

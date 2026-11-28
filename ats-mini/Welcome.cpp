@@ -8,10 +8,10 @@
 
 static const char *const welcomeNews[] =
 {
-  "DX Watch: alerts on FM openings",
-  "Battery as voltage or percent",
-  "Station lists: Spain and the US",
-  "Tidier About screen",
+  "Recovery app and safe mode",
+  "Previous FW and beta channel",
+  "Release notes before updating",
+  "Web theme editor at /themes",
 };
 
 static void drawCentered(const char *text, int y, const lgfx::IFont *font, uint16_t color)
